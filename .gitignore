@@ -1,0 +1,22 @@
+# colcon
+build/
+install/
+log/
+
+# raw HiRISE data is GBs; reproduce with tools/dem_to_world.py
+data/raw/
+
+# rosbags
+*.mcap
+*.db3
+bags/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# editors
+.vscode/
+*.swp

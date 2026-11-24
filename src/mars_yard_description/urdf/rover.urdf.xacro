@@ -1,0 +1,108 @@
+<?xml version="1.0"?>
+<!--
+  4-wheel skid-steer rover, URDF (ROS side: tf frames, RViz, ros2_control joints).
+  The physics lives in ../mjcf/rover.xml; both files must use the numbers below.
+  tools/tests/test_model_consistency.py checks it.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mars_rover">
+
+  <!-- dimensions (m, kg): see DEVLOG "Phase 1 · Rover dimensions" -->
+  <xacro:property name="chassis_x" value="0.8"/>
+  <xacro:property name="chassis_y" value="0.5"/>
+  <xacro:property name="chassis_z" value="0.2"/>
+  <xacro:property name="chassis_mass" value="35.5"/>
+  <xacro:property name="wheel_radius" value="0.12"/>
+  <xacro:property name="wheel_width" value="0.1"/>
+  <xacro:property name="wheel_mass" value="1.0"/>
+  <xacro:property name="wheel_x" value="0.25"/>   <!-- half wheelbase -->
+  <xacro:property name="wheel_y" value="0.32"/>   <!-- half track -->
+  <xacro:property name="wheel_z" value="-0.15"/>  <!-- wheel centre below base_link -->
+  <xacro:property name="axle_roll_limit" value="0.35"/>
+
+  <material name="white"><color rgba="0.9 0.9 0.88 1"/></material>
+  <material name="dark"><color rgba="0.15 0.15 0.15 1"/></material>
+
+  <!-- base_link = chassis centre (REP 105: x forward, y left, z up) -->
+  <link name="base_link">
+    <visual>
+      <geometry><box size="${chassis_x} ${chassis_y} ${chassis_z}"/></geometry>
+      <material name="white"/>
+    </visual>
+    <collision>
+      <geometry><box size="${chassis_x} ${chassis_y} ${chassis_z}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="${chassis_mass}"/>
+      <inertia ixx="${chassis_mass/12*(chassis_y**2+chassis_z**2)}" ixy="0" ixz="0"
+               iyy="${chassis_mass/12*(chassis_x**2+chassis_z**2)}" iyz="0"
+               izz="${chassis_mass/12*(chassis_x**2+chassis_y**2)}"/>
+    </inertial>
+  </link>
+
+  <!-- passive roll pivot carrying the front wheels -->
+  <link name="front_axle_link">
+    <inertial>
+      <mass value="0.5"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.01"/>
+    </inertial>
+  </link>
+  <joint name="front_axle_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="front_axle_link"/>
+    <origin xyz="${wheel_x} 0 ${wheel_z}"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="${-axle_roll_limit}" upper="${axle_roll_limit}" effort="0" velocity="10"/>
+  </joint>
+
+  <xacro:macro name="wheel" params="name parent x y z">
+    <link name="wheel_${name}_link">
+      <visual>
+        <origin rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="dark"/>
+      </visual>
+      <collision>
+        <origin rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="${wheel_mass}"/>
+        <inertia ixx="${wheel_mass/12*(3*wheel_radius**2+wheel_width**2)}" ixy="0" ixz="0"
+                 iyy="${wheel_mass/2*wheel_radius**2}" iyz="0"
+                 izz="${wheel_mass/12*(3*wheel_radius**2+wheel_width**2)}"/>
+      </inertial>
+    </link>
+    <joint name="wheel_${name}_joint" type="continuous">
+      <parent link="${parent}"/>
+      <child link="wheel_${name}_link"/>
+      <origin xyz="${x} ${y} ${z}"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:wheel name="fl" parent="front_axle_link" x="0" y="${wheel_y}" z="0"/>
+  <xacro:wheel name="fr" parent="front_axle_link" x="0" y="${-wheel_y}" z="0"/>
+  <xacro:wheel name="rl" parent="base_link" x="${-wheel_x}" y="${wheel_y}" z="${wheel_z}"/>
+  <xacro:wheel name="rr" parent="base_link" x="${-wheel_x}" y="${-wheel_y}" z="${wheel_z}"/>
+
+  <!-- sensors: same poses as the MJCF sites -->
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0 0 0"/>
+  </joint>
+
+  <link name="lidar_link">
+    <visual>
+      <geometry><cylinder radius="0.04" length="0.06"/></geometry>
+      <material name="dark"/>
+    </visual>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.3 0 0.4"/>
+  </joint>
+
+</robot>

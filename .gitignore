@@ -20,3 +20,6 @@ __pycache__/
 # editors
 .vscode/
 *.swp
+
+# videos are large; commit GIFs or link the MP4 instead
+media/*.mp4

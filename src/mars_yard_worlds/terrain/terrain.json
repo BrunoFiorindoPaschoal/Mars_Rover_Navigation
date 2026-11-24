@@ -1,0 +1,26 @@
+{
+  "size_x_m": 50.0,
+  "size_y_m": 50.0,
+  "z_min_m": -2479.218,
+  "z_max_m": -2471.6621,
+  "z_range_m": 7.5559,
+  "res_m": 0.1,
+  "center_x_m": -2025.38,
+  "center_y_m": 1094617.41,
+  "crs": "PROJCS[\"EQUIRECTANGULAR MARS\",GEOGCS[\"GCS_MARS\",DATUM[\"D_MARS\",SPHEROID[\"MARS_localRadius\",3394839.8133163,0]],PRIMEM[\"Reference_Meridian\",0],UNIT[\"degree\",0.0174532925199433,AUTHORITY[\"EPSG\",\"9122\"]]],PROJECTION[\"Equirectangular\"],PARAMETER[\"standard_parallel_1\",15],PARAMETER[\"central_meridian\",77.44],PARAMETER[\"false_easting\",0],PARAMETER[\"false_northing\",0],UNIT[\"metre\",1,AUTHORITY[\"EPSG\",\"9001\"]],AXIS[\"Easting\",EAST],AXIS[\"Northing\",NORTH]]",
+  "source_products": {
+    "dtm": "DTEEC_045994_1985_046060_1985_U01",
+    "ortho": "ESP_045994_1985_RED_A_01_ORTHO"
+  },
+  "slope_thresholds_deg": {
+    "free": 10.0,
+    "lethal": 20.0
+  },
+  "slope_stats": {
+    "mean_deg": 7.4969,
+    "p50_deg": 5.5867,
+    "p90_deg": 16.486,
+    "max_deg": 35.2377,
+    "pct_above_20_deg": 6.1624
+  }
+}

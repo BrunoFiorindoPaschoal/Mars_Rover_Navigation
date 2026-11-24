@@ -4,6 +4,10 @@ A skid-steer rover on HiRISE Jezero crater terrain, simulated in MuJoCo and driv
 
 > Work in progress. This README claims only what the repo currently shows.
 
+![Rover driving open-loop on a 50 m HiRISE Jezero patch (MuJoCo offscreen render)](media/tier_a.gif)
+
+*Current state (Phase 2): a fixed open-loop drive on the real terrain, with no ROS or navigation yet. Render it with `MUJOCO_GL=egl .venv/bin/python tools/render_tier_a.py`.*
+
 ## Setup (WSL2, Ubuntu 24.04)
 
 ```bash

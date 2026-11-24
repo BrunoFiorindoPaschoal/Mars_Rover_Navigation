@@ -1,0 +1,91 @@
+<!--
+  4-wheel skid-steer rover, MJCF model (physics side).
+  The URDF in ../urdf/rover.urdf.xacro must keep the same numbers; tools/tests/test_model_consistency.py checks it.
+  Every number is justified in DEVLOG.md ("Phase 1 · Rover dimensions").
+
+  Frames: base_link = chassis centre, x forward, y left, z up (REP 103).
+  This file is meant to be <include>d by a world file in mars_yard_worlds/worlds/.
+-->
+<mujoco model="rover">
+  <!-- radians everywhere, so the numbers match the URDF one-to-one -->
+  <compiler angle="radian"/>
+
+  <default>
+    <default class="wheel">
+      <!-- sliding, torsional, rolling friction; sliding 0.8 is in the range of dry regolith simulants -->
+      <geom type="cylinder" size="0.12 0.05" euler="1.5708 0 0" mass="1.0"
+            friction="0.8 0.02 0.001" rgba="0.15 0.15 0.15 1"/>
+      <joint type="hinge" axis="0 1 0" damping="0.05" armature="0.01"/>
+    </default>
+    <default class="visual_only">
+      <geom contype="0" conaffinity="0" group="2" mass="0"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="base_link" pos="0 0 0.275">
+      <freejoint name="base_free_joint"/>
+      <geom name="chassis" type="box" size="0.4 0.25 0.1" mass="35.5" rgba="0.9 0.9 0.88 1"/>
+      <geom name="solar_panel" class="visual_only" type="box" size="0.38 0.23 0.005" pos="0 0 0.105" rgba="0.1 0.2 0.5 1"/>
+      <geom name="mast" class="visual_only" type="cylinder" size="0.02 0.13" pos="0.3 0 0.23" rgba="0.6 0.6 0.6 1"/>
+      <site name="imu" pos="0 0 0"/>
+
+      <!-- the mast ends 3 cm below the rays so they never hit it -->
+      <!-- wheel centres 0.15 m below base_link: ground clearance = 0.27 - 0.10 = 0.17 m -->
+      <!-- Passive roll pivot on the front axle: on uneven ground a rigid 4-wheel chassis rests on
+           only 3 wheels; the pivot keeps all 4 loaded (see DEVLOG, "front axle pivot"). -->
+      <body name="front_axle_link" pos="0.25 0 -0.15">
+        <joint name="front_axle_joint" type="hinge" axis="1 0 0" range="-0.35 0.35" damping="2"/>
+        <geom name="front_axle" class="visual_only" type="capsule" fromto="0 -0.27 0 0 0.27 0" size="0.02" rgba="0.4 0.4 0.4 1"/>
+        <inertial pos="0 0 0" mass="0.5" diaginertia="0.01 0.001 0.01"/>
+        <body name="wheel_fl_link" pos="0 0.32 0">
+          <joint name="wheel_fl_joint" class="wheel"/>
+          <geom name="wheel_fl" class="wheel"/>
+        </body>
+        <body name="wheel_fr_link" pos="0 -0.32 0">
+          <joint name="wheel_fr_joint" class="wheel"/>
+          <geom name="wheel_fr" class="wheel"/>
+        </body>
+      </body>
+      <body name="wheel_rl_link" pos="-0.25 0.32 -0.15">
+        <joint name="wheel_rl_joint" class="wheel"/>
+        <geom name="wheel_rl" class="wheel"/>
+      </body>
+      <body name="wheel_rr_link" pos="-0.25 -0.32 -0.15">
+        <joint name="wheel_rr_joint" class="wheel"/>
+        <geom name="wheel_rr" class="wheel"/>
+      </body>
+
+      <!-- 2D lidar on the mast, 0.57 m above ground -->
+      <body name="lidar_link" pos="0.3 0 0.4">
+        <!-- Rays point along each site's +z. This frame has y = up and z = the -pi direction,
+             so rotating copy k about y by k*1deg sweeps counter-clockwise from -pi, as LaserScan expects. -->
+        <body name="lidar_rays" xyaxes="0 -1 0 0 0 1">
+          <!-- the head lives in this body because a rangefinder ignores its own body's geoms -->
+          <geom name="lidar_head" class="visual_only" type="cylinder" size="0.04 0.03" euler="1.5708 0 0" rgba="0.1 0.1 0.1 1"/>
+          <replicate count="360" sep="-" euler="0 0.0174533 0">
+            <site name="rf" size="0.005"/>
+          </replicate>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!-- Velocity servos on each wheel (the motor + speed controller of a real wheel drive).
+         Named like the joints, which is how mujoco_ros2_control finds them. -->
+    <velocity name="wheel_fl_joint" joint="wheel_fl_joint" kv="50" ctrlrange="-6 6" forcerange="-15 15"/>
+    <velocity name="wheel_fr_joint" joint="wheel_fr_joint" kv="50" ctrlrange="-6 6" forcerange="-15 15"/>
+    <velocity name="wheel_rl_joint" joint="wheel_rl_joint" kv="50" ctrlrange="-6 6" forcerange="-15 15"/>
+    <velocity name="wheel_rr_joint" joint="wheel_rr_joint" kv="50" ctrlrange="-6 6" forcerange="-15 15"/>
+  </actuator>
+
+  <sensor>
+    <!-- mujoco_ros2_control IMU convention: <name>_quat, <name>_gyro, <name>_accel -->
+    <framequat name="base_imu_quat" objtype="site" objname="imu"/>
+    <gyro name="base_imu_gyro" site="imu"/>
+    <accelerometer name="base_imu_accel" site="imu"/>
+    <!-- one rangefinder per replicated site, compiled as lidar-000 ... lidar-359 -->
+    <rangefinder name="lidar" site="rf"/>
+  </sensor>
+</mujoco>

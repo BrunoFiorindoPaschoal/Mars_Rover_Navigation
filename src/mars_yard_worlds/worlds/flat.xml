@@ -1,0 +1,25 @@
+<!-- Flat test world: the rover on a plane under Mars gravity. Used for Phase 1 drive tests and the first Nav2 runs. -->
+<mujoco model="flat">
+  <!-- relative path works both in src/ and in a colcon --merge-install tree (see DEVLOG, Phase 1) -->
+  <include file="../../mars_yard_description/mjcf/rover.xml"/>
+
+  <!-- 2 ms step + implicitfast: stable with stiff wheel velocity servos (see DEVLOG) -->
+  <option timestep="0.002" integrator="implicitfast" gravity="0 0 -3.721"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.2 0.2 0.2" specular="0 0 0"/>
+    <global azimuth="140" elevation="-25"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.85 0.65 0.45" rgb2="0.3 0.2 0.15" width="512" height="3072"/>
+    <texture type="2d" name="grid" builtin="checker" mark="edge" rgb1="0.55 0.35 0.22" rgb2="0.5 0.32 0.2"
+             markrgb="0.7 0.5 0.35" width="300" height="300"/>
+    <material name="ground" texture="grid" texuniform="true" texrepeat="2 2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 10" dir="0.3 0.3 -1" directional="true" castshadow="true"/>
+    <geom name="floor" type="plane" size="25 25 0.1" material="ground" friction="0.8 0.02 0.001"/>
+  </worldbody>
+</mujoco>

@@ -39,4 +39,4 @@ grep -q 'source /opt/ros/jazzy/setup.bash' ~/.bashrc || echo 'source /opt/ros/ja
 cd "$(dirname "$0")/.."
 [ -d .venv ] || python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -q --upgrade pip
-.venv/bin/pip install -q "mujoco==3.12.0" rasterio numpy pandas matplotlib imageio imageio-ffmpeg usd-core pytest pyyaml
+.venv/bin/pip install -q "mujoco==3.12.0" rasterio numpy pandas "matplotlib>=3.8" imageio imageio-ffmpeg usd-core pytest pyyaml

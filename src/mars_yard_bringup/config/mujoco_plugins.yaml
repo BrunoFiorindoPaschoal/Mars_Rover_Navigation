@@ -1,0 +1,18 @@
+/**:
+  ros__parameters:
+    mujoco_plugins:
+      ray_scan_plugin:
+        type: "mars_yard_sim_plugins/RayScanPlugin"
+        site: "lidar"
+        frame_name: "lidar_link"
+        topic: "/scan"
+        num_rays: 360
+        # 360 rays stepping 1 deg CCW about site +z from -pi to pi - 1 deg
+        # (ray 180 = +x forward, ray 270 = +y left).
+        min_angle: -3.141592653589793
+        max_angle: 3.12413936106985
+        range_min: 0.05
+        range_max: 10.0
+        publish_rate: 10.0
+        # Include groups 0, 1, and 3 (collision terrain tiles); exclude group 2 (visual full field & rover visuals).
+        geomgroups: [1, 1, 0, 1, 0, 0]

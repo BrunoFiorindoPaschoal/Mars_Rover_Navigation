@@ -1,0 +1,10 @@
+<library path="mars_yard_sim_plugins">
+  <class name="mars_yard_sim_plugins/RayScanPlugin"
+         type="mars_yard_sim_plugins::RayScanPlugin"
+         base_class_type="mujoco_ros2_control_plugins::MuJoCoROS2ControlPluginBase">
+    <description>
+      2D horizontal lidar plugin that casts rays from an MJCF site at a configurable
+      simulation-time rate using mj_multiRay and publishes REP-117 compliant LaserScan messages.
+    </description>
+  </class>
+</library>

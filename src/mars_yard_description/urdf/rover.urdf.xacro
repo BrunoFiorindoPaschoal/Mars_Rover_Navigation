@@ -6,6 +6,11 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mars_rover">
 
+  <!-- Launch passes the absolute path to the world XML and headless flag.
+       Defaults allow plain `xacro rover.urdf.xacro` (used by consistency tests). -->
+  <xacro:arg name="mujoco_model" default=""/>
+  <xacro:arg name="headless" default="false"/>
+
   <!-- dimensions (m, kg): see DEVLOG "Phase 1 · Rover dimensions" -->
   <xacro:property name="chassis_x" value="0.8"/>
   <xacro:property name="chassis_y" value="0.5"/>
@@ -104,5 +109,64 @@
     <child link="lidar_link"/>
     <origin xyz="0.3 0 0.4"/>
   </joint>
+
+  <!-- Only emit ros2_control when a MuJoCo world path is provided.
+       Plain `xacro rover.urdf.xacro` (no args) omits it so tools/tests/test_model_consistency.py
+       can iterate all <joint> elements without encountering ros2_control <joint> tags. -->
+  <xacro:property name="mujoco_model_path" value="$(arg mujoco_model)"/>
+  <xacro:if value="${mujoco_model_path != ''}">
+    <ros2_control name="MujocoSystem" type="system">
+      <hardware>
+        <plugin>mujoco_ros2_control/MujocoSystemInterface</plugin>
+        <param name="mujoco_model">${mujoco_model_path}</param>
+        <param name="headless">$(arg headless)</param>
+        <param name="sim_speed_factor">1.0</param>
+        <param name="odom_free_joint_name">base_free_joint</param>
+      </hardware>
+
+      <!-- 4 driven wheels: velocity command + position/velocity state -->
+      <xacro:macro name="wheel_ros2_control" params="name">
+        <joint name="wheel_${name}_joint">
+          <command_interface name="velocity"/>
+          <state_interface name="position">
+            <param name="initial_value">0.0</param>
+          </state_interface>
+          <state_interface name="velocity">
+            <param name="initial_value">0.0</param>
+          </state_interface>
+        </joint>
+      </xacro:macro>
+
+      <xacro:wheel_ros2_control name="fl"/>
+      <xacro:wheel_ros2_control name="fr"/>
+      <xacro:wheel_ros2_control name="rl"/>
+      <xacro:wheel_ros2_control name="rr"/>
+
+      <!-- Passive front axle roll pivot: state-only so joint_state_broadcaster publishes it -->
+      <joint name="front_axle_joint">
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+      </joint>
+
+      <!-- IMU sensor: maps to MJCF base_imu_quat, base_imu_gyro, base_imu_accel -->
+      <sensor name="base_imu">
+        <param name="mujoco_type">imu</param>
+        <state_interface name="orientation.x"/>
+        <state_interface name="orientation.y"/>
+        <state_interface name="orientation.z"/>
+        <state_interface name="orientation.w"/>
+        <state_interface name="angular_velocity.x"/>
+        <state_interface name="angular_velocity.y"/>
+        <state_interface name="angular_velocity.z"/>
+        <state_interface name="linear_acceleration.x"/>
+        <state_interface name="linear_acceleration.y"/>
+        <state_interface name="linear_acceleration.z"/>
+      </sensor>
+    </ros2_control>
+  </xacro:if>
 
 </robot>

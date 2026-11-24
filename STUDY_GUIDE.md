@@ -31,8 +31,8 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 
 | # | Part | Why it matters | Status |
 |---|------|----------------|--------|
-| 1 | ros2_control + mujoco_ros2_control | The integration the project exists for | planned (Phase 3) |
-| 2 | tf2 tree + EKF | Every node depends on correct frames | planned (Phase 3) |
+| 1 | ros2_control + mujoco_ros2_control | The integration the project exists for | **done**, see Part 1 |
+| 2 | tf2 tree + EKF | Every node depends on correct frames | **done**, see Part 2 |
 | 3 | Nav2 config: costmaps, planners, controllers | The DLR role | planned (Phase 5) |
 | 4 | Rover MJCF/URDF + contact physics | Explains slip and jitter, and every number in the model | **done**, see Part 4 |
 | 5 | Terrain pipeline (DEM -> hfield + slope map) | Planning on orbital data | **done**, see Part 5 |
@@ -43,6 +43,71 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 Sections for each part are filled in as the code lands.
 
 ---
+
+## Part 1 · ros2_control + mujoco_ros2_control: from `/cmd_vel` to wheel torque  *(Phase 3, done)*
+
+**Where it sits:** between every ROS node and the physics. Nav2 (or teleop) sends a body velocity, and MuJoCo needs one number per actuator. ros2_control is the standard layer in between, and on a real rover only the hardware plugin would change.
+
+**The chain, one control tick (100 Hz):**
+1. `/cmd_vel` (Twist: v, ω) reaches `diff_drive_controller`.
+2. Inverse kinematics: `ω_L = (v − ω·s·m/2)/r`, `ω_R = (v + ω·s·m/2)/r`, where s is the wheel separation (0.64), m is `wheel_separation_multiplier` (2.94) and r is the radius (0.12). Both wheels on one side get the same value.
+3. The controller writes these into the joints' **velocity command interfaces**.
+4. `MujocoSystemInterface::write()` copies each command into `data->ctrl` of the MJCF actuator with the same name. That actuator is a `<velocity kv=50>` servo, a stand-in for a motor and its speed loop.
+5. MuJoCo steps (2 ms). Contact with the ground turns wheel torque into motion, with slip.
+6. `read()` copies `qpos`/`qvel` back into the **state interfaces**, and the IMU sensor data into the sensor interfaces.
+7. The broadcasters publish them: `/joint_states` and `/imu_sensor_broadcaster/imu`. diff_drive integrates the wheel speeds into `/diff_drive_controller/odom`.
+
+**Read, in this order:**
+1. The `<ros2_control>` block at the end of `src/mars_yard_description/urdf/rover.urdf.xacro`: which joints have command interfaces and which only have state interfaces, and why `front_axle_joint` is there at all.
+2. `src/mars_yard_bringup/config/controllers.yaml`: the controller types and every diff_drive parameter.
+3. `src/mars_yard_bringup/config/mujoco_plugins.yaml` and `src/mars_yard_sim_plugins/src/ray_scan_plugin.cpp`: our own lidar. It is a mujoco_ros2_control *plugin* (it runs inside the sim loop with direct access to `mjData`), not a ros2_control controller. It casts 360 rays with one `mj_multiRay` call at 10 Hz of sim time and publishes `LaserScan` with REP 117 `±inf`.
+4. `src/mars_yard_bringup/launch/sim.launch.py`: who starts what. robot_description goes to *both* robot_state_publisher and ros2_control_node.
+
+**Concepts to know:**
+- **Hardware interface vs controller vs broadcaster.** The hardware interface only exposes numbers. Controllers *claim* command interfaces (only one controller per interface). Broadcasters only read.
+- **Controller lifecycle:** unconfigured → inactive → active. The `spawner` loads a controller, configures it and activates it.
+- **Why `wheel_separation_multiplier`?** A skid-steer rover turns by scraping its wheels sideways, so it turns slower than an ideal diff drive with the same wheel speeds. We measured an efficiency of 0.34 (Phase 1). Pretending the track is 1/0.34 times wider makes the controller command proportionally more wheel-speed difference, and the odometry integrates turns at the right rate. The value is right on flat ground only. On sand or slopes it changes, and the EKF with IMU yaw has to absorb the difference.
+- **Performance is part of the design (DEVLOG, Phase 3 lidar bug):** 360 MJCF `<rangefinder>` sensors are evaluated on *every* 2 ms physics step, and one ray against a 500×500 heightfield costs about 0.65 ms. That gave RTF 0.008. The fix had two parts. Rays are cast only at the scan rate, by the plugin. The collision terrain is 5 m tiles (hidden group 3), because the ray-heightfield cost grows with the field's area, while the full textured field stays visual only (group 2). Lesson: profile one component in isolation (`mjDSBL_SENSOR`, then one `mj_ray`) before guessing.
+- **Sim time:** MuJoCo publishes `/clock`, and every node uses `use_sim_time: true`. If one node misses it, tf lookups fail with "extrapolation into the future".
+- Docs: [ros2_control concepts](https://control.ros.org/jazzy/doc/getting_started/getting_started.html), [diff_drive_controller](https://control.ros.org/jazzy/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html), [mujoco_ros2_control](https://github.com/ros-controls/mujoco_ros2_control)
+
+**Self-check questions:**
+1. What would break if both diff_drive_controller and a forward_command_controller listed `wheel_fl_joint`?
+2. Why is the MJCF actuator a *velocity* servo, and what would you lose with a *motor* (torque) actuator plus a ros2_control PID?
+3. With m = 2.94, the rover commanded at ω = 0.5 rad/s really turns at about 0.5 rad/s on flat ground. What do you expect on sand (friction 0.35), and which odometry source shows the error?
+
+**Experiments:**
+- `ros2 control list_hardware_interfaces` and `ros2 control list_controllers`: find the claimed interfaces.
+- Measured on flat ground (`tools/check_bringup.sh flat`): with ω = 0.5 rad/s for 10 s, the wheel odometry says 283° and the truth is 335°. So at this speed the multiplier over-corrects by about 18%. Why might turn efficiency depend on the turn rate?
+- Set `wheel_separation_multiplier: 1.0`, rerun `tools/check_bringup.sh`, and compare the wheel-odom yaw with the ground truth after the 10 s turn.
+
+## Part 2 · tf2 tree + EKF: who publishes which frame  *(Phase 3, done)*
+
+**Where it sits:** every consumer (Nav2, RViz, the metrics node) asks tf2 "where is X in frame Y at time t". If the tree is wrong or two nodes publish the same edge, everything above it fails in confusing ways.
+
+**The tree and its publishers:**
+- `map → odom`: a static identity transform for now (`static_transform_publisher`). Later a global localizer could correct the drift here. It never jumps the robot inside `odom`.
+- `odom → base_link`: the **EKF only**. diff_drive's `enable_odom_tf` is off, and the ground-truth odometry must not publish tf either. Two publishers of one edge make the robot flicker between two poses.
+- `base_link → front_axle_link → wheel_f*`, `base_link → wheel_r*`: robot_state_publisher, from the URDF plus `/joint_states`. A joint with no state comes out as a missing frame.
+- `base_link → imu_link, lidar_link`: robot_state_publisher, from the fixed joints in the URDF.
+
+**Read:** `src/mars_yard_bringup/config/ekf.yaml`. For each sensor, the 15-element boolean vector says which state variables it feeds: `[x y z, roll pitch yaw, vx vy vz, vroll vpitch vyaw, ax ay az]`.
+
+**Concepts to know:**
+- **REP 105:** why `odom` is continuous but drifts, and why `map` doesn't drift but may jump.
+- **Fuse velocities, not poses, from wheel odometry.** Wheel odometry's pose is an integral of the same velocities, so fusing both counts the information twice and makes the EKF overconfident.
+- **The IMU gives absolute roll and pitch** (from gravity) and yaw *rate*. On Earth a magnetometer adds absolute yaw. Mars has no global magnetic field, so the EKF fuses only the gyro's yaw rate. MuJoCo's `framequat` would give the *true* world yaw for free, and fusing it made the EKF heading error exactly 0. That is a simulation cheat, and it would hide the heading drift the benchmark is meant to measure (DEVLOG, Phase 3).
+- **two_d_mode:** it forces z, roll and pitch to 0. That's fine for Nav2's 2D planning, but it hides the terrain tilt.
+- Docs: [REP 105](https://www.ros.org/reps/rep-0105.html), [robot_localization state estimation nodes](https://docs.ros.org/en/jazzy/p/robot_localization/), [tf2 tutorials](https://docs.ros.org/en/jazzy/Tutorials/Intermediate/Tf2/Tf2-Main.html)
+
+**Self-check questions:**
+1. Who publishes `odom → base_link`, and what happens if diff_drive publishes it too?
+2. Why are `map` and `odom` separate frames, if `map → odom` is identity right now?
+3. You remove `front_axle_joint` from `<ros2_control>`. Which frames disappear, and why?
+
+**Experiments:**
+- `ros2 run tf2_tools view_frames` and compare with `results/tf_frames.pdf`.
+- `ros2 run tf2_ros tf2_echo odom base_link` while driving, compared with the ground-truth topic: that difference is the drift Phase 4 measures.
 
 ## Part 4 · Rover model: MJCF physics + URDF frames  *(Phase 1, done)*
 

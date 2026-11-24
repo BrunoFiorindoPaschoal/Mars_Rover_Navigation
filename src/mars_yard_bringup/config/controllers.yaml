@@ -1,0 +1,56 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    imu_sensor_broadcaster:
+      type: imu_sensor_broadcaster/IMUSensorBroadcaster
+
+    diff_drive_controller:
+      type: diff_drive_controller/DiffDriveController
+
+joint_state_broadcaster:
+  ros__parameters:
+    update_rate: 50
+
+imu_sensor_broadcaster:
+  ros__parameters:
+    update_rate: 100
+    sensor_name: base_imu
+    frame_id: imu_link
+    static_covariance_orientation: [0.0001, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0001]
+    static_covariance_angular_velocity: [0.0001, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0001]
+    static_covariance_linear_acceleration: [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+
+diff_drive_controller:
+  ros__parameters:
+    left_wheel_names: ["wheel_fl_joint", "wheel_rl_joint"]
+    right_wheel_names: ["wheel_fr_joint", "wheel_rr_joint"]
+
+    wheel_separation: 0.64
+    wheel_radius: 0.12
+    # 1 / 0.34, the measured skid-steer turn efficiency on flat ground (DEVLOG Phase 1)
+    wheel_separation_multiplier: 2.94
+    left_wheel_radius_multiplier: 1.0
+    right_wheel_radius_multiplier: 1.0
+
+    odom_frame_id: odom
+    base_frame_id: base_link
+    enable_odom_tf: false
+    open_loop: false
+    position_feedback: true
+    publish_rate: 50.0
+    cmd_vel_timeout: 0.5
+
+    pose_covariance_diagonal: [0.01, 0.01, 0.01, 0.01, 0.01, 0.05]
+    twist_covariance_diagonal: [0.01, 0.01, 0.01, 0.01, 0.01, 0.05]
+
+    linear.x.has_velocity_limits: true
+    linear.x.max_velocity: 0.72
+    linear.x.min_velocity: -0.72
+
+    angular.z.has_velocity_limits: true
+    angular.z.max_velocity: 1.5
+    angular.z.min_velocity: -1.5

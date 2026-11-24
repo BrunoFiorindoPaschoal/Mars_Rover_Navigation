@@ -14,6 +14,12 @@ A skid-steer rover on HiRISE Jezero crater terrain, simulated in MuJoCo and driv
 ./tools/setup_wsl.sh
 ```
 
+Launch the ROS 2 + MuJoCo simulation (`world:=flat` or `world:=mars`):
+
+```bash
+ros2 launch mars_yard_bringup sim.launch.py world:=mars
+```
+
 ## Docs
 - [DEVLOG.md](DEVLOG.md): design decisions, with the reasons for each
 - [STUDY_GUIDE.md](STUDY_GUIDE.md): the core parts of the code and how to study them

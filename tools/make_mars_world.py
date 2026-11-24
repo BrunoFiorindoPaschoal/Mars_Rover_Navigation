@@ -1,4 +1,4 @@
-"""Generate src/mars_yard_worlds/worlds/mars.xml from the terrain assets (Phase 2).
+"""Generate src/mars_yard_worlds/worlds/mars.xml from the terrain assets (Phase 2 / 3c).
 
     .venv/bin/python tools/make_mars_world.py [--seed 7] [--rocks 40] [--sand 3]
 
@@ -6,9 +6,18 @@ Inputs, from tools/dem_to_world.py, in src/mars_yard_worlds/terrain/:
 heightmap.png, texture.png, terrain.json and slope.pgm.
 
 It writes:
-- mars.xml, with the Jezero heightfield, rocks and low-friction sand patches. The terrain is
-  shifted so that the ground under the rover spawn (x = y = 0) is at z = 0.
-- heightmap.bin and sand_<k>.bin, float32 heightfields for MuJoCo (see write_hfield_bin).
+- mars.xml, with:
+  * the full Jezero heightfield kept as visual-only (group 2, contype=0, conaffinity=0) so the
+    HiRISE ortho texture maps seamlessly across the whole 50 x 50 m yard;
+  * a 10 x 10 grid of 5 m collision tiles at the full 0.1 m resolution (group 3, invisible,
+    1-cell overlap between neighbours so there are no gaps) for fast lidar raycasts;
+  * rocks and low-friction sand patches.
+  The terrain (visual field, collision tiles, sand, and rocks) is shifted vertically so that the
+  HIGHEST ground point under the 4 rover wheel contact centres at spawn (x = +/-0.25, y = +/-0.32
+  relative to base_link) sits at z = 0. With base_link spawning at z = 0.275 m (wheel bottoms at
+  z = +0.005 m), no wheel starts inside the terrain and the rover drops at most a few cm on settle.
+- heightmap.bin, terrain/tiles/terrain_tile_<i>_<j>.bin, and sand_<k>.bin, float32 heightfields
+  for MuJoCo (see write_hfield_bin).
 - obstacles.json, with the rock and sand positions, for the benchmark scenarios and the metrics.
 
 Rocks and sand are placed with a fixed seed, so the world is reproducible.
@@ -22,11 +31,21 @@ from PIL import Image
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 TERRAIN = ROOT / "src/mars_yard_worlds/terrain"
+TILES = TERRAIN / "tiles"
 OUT = ROOT / "src/mars_yard_worlds/worlds/mars.xml"
 
 SAND_LIFT = 0.005      # m, sand surface sits this far above the main terrain
 SAND_FRICTION = 0.35   # vs 0.8 on regolith: loose sand, wheels slip
 SPAWN_CLEAR = 3.0      # m, no rocks or sand this close to the spawn point
+TILE_GRID = 10         # 10 x 10 collision tiles (~5 m each across the 50 m terrain)
+
+# Wheel contact centres at spawn pose (base_link at x=0, y=0), matching rover.xml.
+SPAWN_WHEEL_XY = (
+    (0.25, 0.32),
+    (0.25, -0.32),
+    (-0.25, 0.32),
+    (-0.25, -0.32),
+)
 
 
 def write_hfield_bin(z, path):
@@ -67,6 +86,66 @@ class Terrain:
         return self.z[self.index(x, y)]
 
 
+def spawn_ground_height(t):
+    """Highest DEM ground elevation under the 4 wheel contact points at spawn."""
+    return max(float(t.height(x, y)) for x, y in SPAWN_WHEEL_XY)
+
+
+def tile_bounds(n, n_tiles=TILE_GRID):
+    """Grid index boundaries partitioning [0 .. n-1] into n_tiles segments."""
+    return [int(round(k * (n - 1) / n_tiles)) for k in range(n_tiles + 1)]
+
+
+def build_collision_tiles(t, n_tiles=TILE_GRID):
+    """Write n_tiles x n_tiles full-resolution collision tiles with 1-cell overlap.
+
+    Neighbouring tiles share an overlap band of 1 grid cell (2 shared vertex rows/columns)
+    so no wheel or ray can slip through a seam. Each tile's .bin is written with
+    write_hfield_bin() and given its exact local [lo, lo + span] vertical mapping so its
+    world surface matches the full heightfield identically.
+    """
+    TILES.mkdir(parents=True, exist_ok=True)
+    n = t.n
+    step = (2.0 * t.half) / (n - 1)
+    bounds = tile_bounds(n, n_tiles)
+    tiles = []
+
+    for i in range(n_tiles):
+        r0 = bounds[i]
+        r1 = min(n - 1, bounds[i + 1] + 1) if i < n_tiles - 1 else bounds[i + 1]
+        y_min = t.half - r1 * step   # south edge (image row r1)
+        y_max = t.half - r0 * step   # north edge (image row r0)
+        cy = 0.5 * (y_min + y_max)
+        ry = 0.5 * (y_max - y_min)
+
+        for j in range(n_tiles):
+            c0 = bounds[j]
+            c1 = min(n - 1, bounds[j + 1] + 1) if j < n_tiles - 1 else bounds[j + 1]
+            x_min = -t.half + c0 * step  # west edge (col c0)
+            x_max = -t.half + c1 * step  # east edge (col c1)
+            cx = 0.5 * (x_min + x_max)
+            rx = 0.5 * (x_max - x_min)
+
+            crop = t.z[r0:r1 + 1, c0:c1 + 1]
+            crop_f32 = np.asarray(crop, dtype=np.float32)
+            lo = float(crop_f32.min())
+            span = float(crop_f32.max() - lo) or 1.0
+
+            name = f"terrain_tile_{i}_{j}"
+            write_hfield_bin(crop, TILES / f"{name}.bin")
+            tiles.append({
+                "name": name,
+                "file": f"../terrain/tiles/{name}.bin",
+                "cx": cx,
+                "cy": cy,
+                "rx": rx,
+                "ry": ry,
+                "z_lo": lo,
+                "z_span": span,
+            })
+    return tiles
+
+
 def place_rocks(t, rng, count):
     """Random rocks on drivable ground (rocks on lethal slopes are already off-limits)."""
     rocks = []
@@ -104,14 +183,29 @@ def place_sand(t, rng, count, side=4.0):
     return patches
 
 
-def world_xml(t, rocks, sand):
+def world_xml(t, rocks, sand, tiles):
     """Assemble the MJCF text."""
     m = t.meta
-    z0 = t.height(0.0, 0.0)  # shift so the ground under the spawn is z = 0
+    z0 = spawn_ground_height(t)  # shift so highest of the 4 spawn wheel ground points is at z = 0
     assets = [f'    <hfield name="jezero" file="../terrain/heightmap.bin" '
               f'size="{t.half} {t.half} {m["z_range_m"]} 1"/>']
-    geoms = [f'    <geom name="terrain" type="hfield" hfield="jezero" pos="0 0 {-z0:.4f}" material="regolith" '
-             f'friction="0.8 0.02 0.001"/>']
+    for tile in tiles:
+        assets.append(
+            f'    <hfield name="{tile["name"]}" file="{tile["file"]}" '
+            f'size="{tile["rx"]:.6f} {tile["ry"]:.6f} {tile["z_span"]:.6f} 1"/>'
+        )
+    geoms = [
+        # Full textured heightfield kept for visuals only; collision and lidar rays use group-3 tiles.
+        f'    <geom name="terrain" type="hfield" hfield="jezero" pos="0 0 {-z0:.6f}" '
+        f'material="regolith" contype="0" conaffinity="0" group="2"/>'
+    ]
+    for tile in tiles:
+        geoms.append(
+            f'    <geom name="{tile["name"]}" type="hfield" hfield="{tile["name"]}" '
+            f'pos="{tile["cx"]:.6f} {tile["cy"]:.6f} {tile["z_lo"] - z0:.6f}" '
+            # group="3" hides tiles in default rendering; alpha=0.001 (>0) is required because MuJoCo mj_ray/mj_multiRay skips geoms with rgba[3]==0.
+            f'group="3" rgba="0 0 0 0.001" friction="0.8 0.02 0.001"/>'
+        )
     for s in sand:
         h = s["side"] / 2
         assets.append(f'    <hfield name="{s["name"]}" file="../terrain/{s["name"]}.bin" size="{h} {h} {s["z_span"]} 0.05"/>')
@@ -160,15 +254,16 @@ def main():
 
     t = Terrain()
     write_hfield_bin(t.z, TERRAIN / "heightmap.bin")
+    tiles = build_collision_tiles(t, TILE_GRID)
     rng = np.random.default_rng(args.seed)
     rocks = place_rocks(t, rng, args.rocks)
     sand = place_sand(t, rng, args.sand)
-    OUT.write_text(world_xml(t, rocks, sand))
-    z0 = t.height(0.0, 0.0)
+    OUT.write_text(world_xml(t, rocks, sand, tiles))
+    z0 = spawn_ground_height(t)
     (TERRAIN / "obstacles.json").write_text(json.dumps(
         {"seed": args.seed, "ground_offset_m": round(-z0, 4), "rocks": rocks, "sand": sand}, indent=2) + "\n")
-    print(f"wrote {OUT.relative_to(ROOT)}: {len(rocks)} rocks, {len(sand)} sand patches, "
-          f"spawn ground z offset {-z0:.3f} m, spawn slope pixel {t.slope[t.index(0, 0)]} (254 = free)")
+    print(f"wrote {OUT.relative_to(ROOT)}: {len(tiles)} collision tiles, {len(rocks)} rocks, {len(sand)} sand patches, "
+          f"spawn ground z offset {-z0:.4f} m, spawn slope pixel {t.slope[t.index(0, 0)]} (254 = free)")
 
 
 if __name__ == "__main__":

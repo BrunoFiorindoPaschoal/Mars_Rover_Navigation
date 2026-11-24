@@ -30,7 +30,7 @@
       <geom name="mast" class="visual_only" type="cylinder" size="0.02 0.13" pos="0.3 0 0.23" rgba="0.6 0.6 0.6 1"/>
       <site name="imu" pos="0 0 0"/>
 
-      <!-- the mast ends 3 cm below the rays so they never hit it -->
+      <!-- the mast ends 4 cm below the lidar plane and is visual_only (group 2), so rays never hit it -->
       <!-- wheel centres 0.15 m below base_link: ground clearance = 0.27 - 0.10 = 0.17 m -->
       <!-- Passive roll pivot on the front axle: on uneven ground a rigid 4-wheel chassis rests on
            only 3 wheels; the pivot keeps all 4 loaded (see DEVLOG, "front axle pivot"). -->
@@ -56,17 +56,14 @@
         <geom name="wheel_rr" class="wheel"/>
       </body>
 
-      <!-- 2D lidar on the mast, 0.57 m above ground -->
+      <!-- 2D lidar on the mast, 0.57 m above ground.
+           mars_yard_sim_plugins/RayScanPlugin casts a 360-ray horizontal scan from the 'lidar' site
+           at 10 Hz using mj_multiRay (no per-step <rangefinder> sensors). The site frame matches
+           URDF lidar_link (x forward, y left, z up). -->
       <body name="lidar_link" pos="0.3 0 0.4">
-        <!-- Rays point along each site's +z. This frame has y = up and z = the -pi direction,
-             so rotating copy k about y by k*1deg sweeps counter-clockwise from -pi, as LaserScan expects. -->
-        <body name="lidar_rays" xyaxes="0 -1 0 0 0 1">
-          <!-- the head lives in this body because a rangefinder ignores its own body's geoms -->
-          <geom name="lidar_head" class="visual_only" type="cylinder" size="0.04 0.03" euler="1.5708 0 0" rgba="0.1 0.1 0.1 1"/>
-          <replicate count="360" sep="-" euler="0 0.0174533 0">
-            <site name="rf" size="0.005"/>
-          </replicate>
-        </body>
+        <!-- visual_only (group 2) and on lidar_link (bodyexclude), so rays ignore it -->
+        <geom name="lidar_head" class="visual_only" type="cylinder" size="0.04 0.03" rgba="0.1 0.1 0.1 1"/>
+        <site name="lidar" pos="0 0 0" size="0.005"/>
       </body>
     </body>
   </worldbody>
@@ -85,7 +82,5 @@
     <framequat name="base_imu_quat" objtype="site" objname="imu"/>
     <gyro name="base_imu_gyro" site="imu"/>
     <accelerometer name="base_imu_accel" site="imu"/>
-    <!-- one rangefinder per replicated site, compiled as lidar-000 ... lidar-359 -->
-    <rangefinder name="lidar" site="rf"/>
   </sensor>
 </mujoco>

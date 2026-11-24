@@ -46,8 +46,6 @@ def main():
     cam.trackbodyid = model.body("base_link").id
     cam.distance, cam.elevation = 4.0, -20.0
 
-    scene_opt = mujoco.MjvOption()
-    scene_opt.flags[mujoco.mjtVisFlag.mjVIS_RANGEFINDER] = False  # hide the 360 lidar rays
 
     act = {name: model.actuator(name).id for name in dt.WHEELS}
     steps_per_frame = int(round(1 / (FPS * model.opt.timestep)))
@@ -62,7 +60,7 @@ def main():
             for _ in range(steps_per_frame):
                 mujoco.mj_step(model, data)
             cam.azimuth = 120 + 40 * np.sin(frame / (FPS * 8))  # slow swing around the rover
-            renderer.update_scene(data, cam, scene_opt)
+            renderer.update_scene(data, cam)
             video.append_data(renderer.render())
     print(f"wrote {args.out}: {args.seconds:.0f} s, rover ended at x={data.qpos[0]:.1f} y={data.qpos[1]:.1f} m")
 

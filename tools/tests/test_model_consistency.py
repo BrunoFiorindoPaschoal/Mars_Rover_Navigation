@@ -64,3 +64,15 @@ def test_joint_names_have_actuators(urdf, mjcf):
     for j in urdf.iter("joint"):
         if j.get("type") == "continuous":
             assert model.actuator(j.get("name")).trnid[0] == model.joint(j.get("name")).id
+def test_lidar_site_matches_urdf_frame(urdf, mjcf):
+    """The single 'lidar' site used by RayScanPlugin matches URDF lidar_link in position and orientation."""
+    model, data = mjcf
+    base = model.body("base_link").id
+    site_id = model.site("lidar").id
+    base_rot = data.xmat[base].reshape(3, 3)
+    mj_site_pos = base_rot.T @ (data.site_xpos[site_id] - data.xpos[base])
+    mj_site_rot = base_rot.T @ data.site_xmat[site_id].reshape(3, 3)
+    np.testing.assert_allclose(urdf_pose_in_base(urdf, "lidar_link"), mj_site_pos, atol=1e-6)
+    np.testing.assert_allclose(mj_site_rot, np.eye(3), atol=1e-6)
+    # No per-step rangefinder sensors remain (RayScanPlugin casts rays on demand).
+    assert not any(t == mujoco.mjtSensor.mjSENS_RANGEFINDER for t in model.sensor_type)

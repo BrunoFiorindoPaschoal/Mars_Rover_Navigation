@@ -4,7 +4,8 @@
 For each scenario x seed (skipping rows already recorded in the output CSV):
   1. Resets the rover in-sim via SimResetter (teleport, settle, EKF set_pose, clear
      hazards and costmaps, reset metrics) with reproducible start perturbation for seed > 0.
-  2. Starts `ros2 bag record -s mcap` on telemetry topics (excluding /points and /scan).
+  2. Starts `ros2 bag record -s mcap` on telemetry topics (excluding /points and /scan), plus any
+     topics in the BAG_EXTRA_TOPICS environment variable (space-separated).
   3. Sends the NavigateToPose goal via nav2_simple_commander and monitors for completion
      or failure (timeout, stuck, collision, tipover, aborted).
   4. Stops the bag cleanly and immediately appends one CSV row (crash-safe).
@@ -322,6 +323,8 @@ def start_bag_record(bag_dir: pathlib.Path) -> Optional[subprocess.Popen]:
         "-o",
         str(bag_dir),
         *BAG_TOPICS,
+        # e.g. BAG_EXTRA_TOPICS="/global_costmap/costmap /hazards" for one figure run; off by default (size)
+        *os.environ.get("BAG_EXTRA_TOPICS", "").split(),
     ]
     proc = subprocess.Popen(
         cmd,

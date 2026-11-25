@@ -1,0 +1,17 @@
+========================================================================
+Mars Yard Benchmark Matrix started: 2026-11-25T20:14:53+01:00
+  combos    : smac_hybrid+dwb
+  seeds     : 1
+  scenarios : rocks_01
+  csv       : results/figure/run.csv
+  bags      : results/figure/bags
+========================================================================
+
+>>> Combo: planner=smac_hybrid controller=dwb
+  Launching sim.launch.py (attempt 1/3) -> /tmp/matrix_smac_hybrid_dwb_try1.log
+[smac_hybrid+dwb] Starting benchmark: 1 runs to execute (0 already in results/figure/run.csv), sim_timeout=120s, bags=results/figure/bags
+[INFO] [1795634111.307830652] [basic_navigator]: Nav2 is ready for use!
+[INFO] [1795634112.965939366] [basic_navigator]: Navigating to goal: -10.46 2.81...
+  [  1/1] smac_hybrid+dwb     rocks_01 (rocks) s0 -> SUCCESS (none     ) t= 28.96s ratio=1.00 err=0.569m cte=0.1908 clr=0.60m E=423J rec=0 RTF=1.000x (reset=1.30s)
+
+Matrix finished at 2026-11-25T20:15:45+01:00 (rc=0).

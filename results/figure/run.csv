@@ -1,0 +1,2 @@
+combo,scenario,group,seed,result,failure_type,time_s,path_len_gt,straight_dist,path_ratio,gt_goal_err,tracking_err,slip_ratio,lateral_slide,ekf_drift,energy_J,min_obstacle_clearance,recoveries,rtf
+smac_hybrid+dwb,rocks_01,rocks,0,SUCCESS,none,28.956,9.8529,9.839,1.0014,0.5693,0.1908,0.01739,0.2926,0.373,423.11,0.5999,0,1.0

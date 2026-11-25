@@ -40,7 +40,8 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 | 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
 | 7 | Benchmark runner + analysis | In-sim reset, evaluation protocol, failure modes | **done**, see Part 7 |
 | 7b | Domain randomization + robustness study | Which controller survives a wrong model, and why | **done**, see Part 8 |
-| 8 | Docker + CI | Reproducibility | **done**: `Dockerfile`, `.github/workflows/ci.yml`, one README per package |
+| 8 | Docker + CI | Reproducibility | **done**, see Part 9 |
+| 9 | Hero video (bag replay + Blender) | Showing a recorded run honestly; rosbag2, quaternions, MuJoCo hfield layout | **done**, see Part 10 |
 
 Sections for each part are filled in as the code lands.
 
@@ -365,3 +366,68 @@ Sections for each part are filled in as the code lands.
 - `ros2 launch mars_yard_bringup sim.launch.py world:=mars nav:=true rand_level:=3` and send an RViz goal across `slope_04`; watch the EKF footprint and `/ground_truth/odom` separate.
 - Rerun one cell with a different physics draw: `./tools/run_robustness.sh --levels 2 --combos smac_hybrid+dwb --scenarios slope_04 --seeds 2 --output-csv /tmp/r.csv` after changing `RAND_SEED` in the script, and compare with the pilot.
 - Set only `cmd_latency_s` high (edit a copied `params.json` level) and see which controller oscillates first.
+
+---
+
+## Part 9 · Docker image + CI: one dependency list, tested on every push  *(Phase 8, done)*
+
+**Where it sits:** outside the runtime. The `Dockerfile` is the single list of what the project needs (apt packages, the pinned Python venv, the colcon build); `.github/workflows/ci.yml` builds that image on every push to `main` and on PRs and runs the tests inside it.
+
+**Read, in this order:**
+1. `tools/setup_wsl.sh`: the native install (what a developer runs once).
+2. `Dockerfile`: the same apt set on `osrf/ros:jazzy-desktop`, the venv with `--system-site-packages`, `mujoco==3.12.0`, then `./build.sh`.
+3. `.github/workflows/ci.yml`: build the image, `colcon test` for `mars_yard_metrics` (gtest), `pytest tools/tests` (offline tools).
+4. `build.sh`, and the per-package READMEs under `src/*/README.md`.
+
+**Concepts to know:**
+- **Image layers and cache:** each `RUN`/`COPY` is a layer; `COPY . /ws` before the venv/build means any source change rebuilds those layers. Order instructions from least to most frequently changing.
+- **`--system-site-packages`:** the venv still sees the apt-installed `rclpy`, `rosbag2_py` and friends, so pure-pip tools and ROS Python live in one interpreter.
+- **Why pin `mujoco==3.12.0`:** `mujoco_ros2_control` ships MuJoCo 3.12; the offline tools (world generation, model-consistency tests) must parse the MJCF exactly like the bridge does.
+- **What CI does *not* cover:** the simulation checks (`tools/check_*.sh`) need minutes of real-time simulation and a quiet machine; they are flaky on shared runners and are run by hand.
+- **Docs:** [Dockerfile reference](https://docs.docker.com/reference/dockerfile/), [GitHub Actions workflow syntax](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions), [colcon test](https://colcon.readthedocs.io/en/released/reference/verb/test.html), [ROS 2 Docker images](https://hub.docker.com/r/osrf/ros)
+
+**Self-check questions:**
+1. Why does CI build the Dockerfile instead of installing packages directly on the runner?
+2. A change to one Python file under `tools/`: which Dockerfile layers are rebuilt, and how would you reorder it to rebuild less?
+3. Why must the venv see system site-packages here, and what breaks without it?
+4. Which parts of the project are verified only by hand, and why are they not in CI?
+
+**Experiments:**
+- On a machine with Docker: `docker build -t mars-yard . && docker run --rm -it mars-yard`, then run `.venv/bin/python -m pytest tools/tests -q` inside it.
+- Break a test on a branch, push, and read the failing CI log.
+
+---
+
+## Part 10 · Hero video: replaying a rosbag in MuJoCo and rendering it in Blender  *(Phase 9, done)*
+
+**Where it sits:** after the benchmark. Input is one recorded bag from `results/benchmark/bags/`; nothing is re-simulated. Data flow: MCAP bag → `bag_to_trajectory.py` (npz) → `export_usd.py` (USD rover + rocks, OBJ terrain, plans) → `build_scene.py` in Blender (PNG frames) → `encode.sh` (MP4 + GIF).
+
+**Read, in this order:**
+1. `tools/bag_to_trajectory.py`: `rosbag2_py.SequentialReader`, deserializing by type, header stamps vs bag receive time, joint order per message.
+2. `tools/export_usd.py`: `resample()` (linear for positions, nlerp for quaternions after `unify_hemisphere`), `set_pose()` + `mj_forward` (kinematics only), `Ground` (`mj_ray` with a geom-group mask), `hfield_obj()` (how MuJoCo lays out a heightfield), the stage unit fix.
+3. `tools/blender/build_scene.py`: `import_rover()` (USD Transform Cache), `lumpy()` (why not modifiers), `add_paths()` (one curve per `/plan`, visibility keys), `add_cameras()` (tracking empty, chase that rises into an overview, timeline markers bound to cameras).
+4. `tools/blender/encode.sh`: ffmpeg `drawtext`, `tpad`, palette-based GIF.
+5. `tools/bag_to_costmap.py` + `tools/plot_costmap_figure.py`: the README costmap figure (`nav_msgs/OccupancyGrid` layout: row-major, origin at the lower-left cell).
+6. DEVLOG Phase 9 (run choice, crash workaround, terminal gotcha, costmap figure).
+
+**Concepts to know:**
+- **Replay vs re-simulation:** setting `qpos` and calling `mj_forward` gives the exact recorded poses; stepping physics again would not reproduce the run (different timing, different contacts).
+- **Quaternion interpolation:** `q` and `−q` are the same rotation; flip neighbours to one hemisphere before interpolating, then normalise (nlerp).
+- **Sim time:** all three topics are joined on header stamps (sim time), not on bag receive time.
+- **Heightfield layout:** MuJoCo's hfield spans `[−sx, sx] × [−sy, sy]`, row index along y, heights × `sz`, plus the geom position. Getting this wrong shifts the terrain under the rover; the clearance assert catches it.
+- **USD Transform Cache:** Blender reads the animated transforms from the USD file every frame instead of keyframes.
+- **What the picture shows:** the cyan plan is replaced at each Nav2 replan (≈1 Hz), the white line is ground truth, so the gap between them is tracking error plus slip.
+- **Docs:** [rosbag2_py API](https://docs.ros.org/en/jazzy/Tutorials/Advanced/Reading-From-A-Bag-File-Python.html), [MuJoCo USD exporter](https://mujoco.readthedocs.io/en/stable/python.html#usd-exporter), [MuJoCo heightfields](https://mujoco.readthedocs.io/en/stable/XMLreference.html#asset-hfield), [Blender Python API](https://docs.blender.org/api/current/), [ffmpeg drawtext](https://ffmpeg.org/ffmpeg-filters.html#drawtext-1)
+
+**Self-check questions:**
+1. Why does the video replay `qpos` with `mj_forward` instead of re-running the physics with the recorded `/cmd_vel`?
+2. What goes wrong if you interpolate quaternions without `unify_hemisphere`?
+3. Why is the terrain exported as an OBJ and not through the USD exporter?
+4. The first plan in `rocks_01` passes the boulders on the other side from the route the rover drove. Which part of the stack changed its mind, and how often does it replan?
+5. Why are a few late plans skipped in the video, and is that hiding a real behaviour?
+
+**Experiments:**
+- Render a different bag (e.g. `smac_hybrid_mppi__rocks_01__s0`, the wiggly one) and compare how closely the white track follows the cyan plan.
+- Set `TRACK_SIDE = -1.0` in `build_scene.py` and render one still of the tracking shot: what does the camera see now?
+- Plot `/plan` lengths over time from the npz and find the turn-around plans near the goal.
+- Re-run another rock scenario with `BAG_EXTRA_TOPICS="/global_costmap/costmap /hazards"` and plot it with `tools/plot_costmap_figure.py`: does the first plan always ignore the rocks, and how far out does the lidar mark them?

@@ -21,5 +21,8 @@ __pycache__/
 .vscode/
 *.swp
 
-# videos are large; commit GIFs or link the MP4 instead
+# videos are large; only the 720p hero video is committed
 media/*.mp4
+!media/hero.mp4
+# hero-video intermediates, rebuilt by tools/export_usd.py
+media/hero/

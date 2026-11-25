@@ -4,9 +4,14 @@ A skid-steer rover on HiRISE Jezero crater terrain, simulated in MuJoCo and driv
 
 > Work in progress. This README claims only what the repo currently shows.
 
-![Rover driving open-loop on a 50 m HiRISE Jezero patch (MuJoCo offscreen render)](media/tier_a.gif)
+<table>
+<tr>
+<td width="50%"><a href="media/hero.mp4"><img src="media/hero.gif" alt="Rover driving around two boulders on Jezero terrain (recorded Nav2 run, rendered in Blender)"></a></td>
+<td width="50%"><img src="media/costmap_rocks_01.png" alt="Nav2 global costmap: the lidar marks two boulders 1.5 s into the run and the plan swings around them"></td>
+</tr>
+</table>
 
-*This GIF is the Phase 2 open-loop drive (`MUJOCO_GL=egl .venv/bin/python tools/render_tier_a.py`). The repo now has the full ROS 2 / Nav2 stack, a benchmark and a robustness study; see below. Each package has its own README under `src/`.*
+*Left: a recorded benchmark run (`rocks_01`, Smac Hybrid-A* + DWB). Nav2's plan (cyan, replanned every second) bends around two boulders; the white line is the true driven path from MuJoCo. Every pose and wheel angle comes from the physics run, and Blender only renders it. Click for the full 30 s video ([how it is made](#hero-video)). Right: what the robot saw. The first plan was made before any hazard was marked and cuts through a boulder; 1.5 s later the 3D-lidar hazard detector has put both boulders into the global costmap (lethal core + inflation halo, matching the true rock outlines) and the replan goes around. The costmap comes from a re-run of the same scenario with costmap recording on (same outcome: 0.57 m vs 0.56 m from the goal). Each package has its own README under `src/`.*
 
 ## Setup (WSL2, Ubuntu 24.04)
 
@@ -102,6 +107,28 @@ Pilot (planner `smac_hybrid`; scenarios `flat_01`, `slope_04`, `rocks_01`, `sand
 | RPP | 8/8 | 7/8 | 7/8 | 5/8 |
 
 22 of the 24 failures are `goal_miss` on the 14.5° cross-slope (`slope_04`) and in the rock field: with lower friction the rover slides downhill, and the EKF (wheel speed + gyro) cannot see it. See `results/robustness/plots/` and DEVLOG Phase 7.
+
+## Hero video
+
+Replays a recorded benchmark bag in MuJoCo (no physics, `qpos` from the bag each frame) and renders it in Blender 5.3:
+
+```bash
+python3 tools/bag_to_trajectory.py results/benchmark/bags/smac_hybrid_dwb__rocks_01__s0 --out media/hero/trajectory.npz  # system python, ROS sourced
+.venv/bin/python tools/export_usd.py media/hero/trajectory.npz --out media/hero/export   # rover+rocks USD, terrain OBJ, plans
+blender -b -P tools/blender/build_scene.py -- --export media/hero/export --anim --out frames/ --samples 32
+tools/blender/encode.sh frames/ media                                                      # hero.mp4 (720p) + hero.gif
+```
+
+The costmap figure needs a bag with the costmap in it, so it re-runs the scenario with extra topics recorded:
+
+```bash
+BAG_EXTRA_TOPICS="/global_costmap/costmap /hazards" ./tools/run_matrix.sh --seeds 1 --scenarios rocks_01 \
+  --combos smac_hybrid+dwb --output-csv results/figure/run.csv --bags-dir results/figure/bags --log-file results/figure/run.log
+python3 tools/bag_to_costmap.py results/figure/bags/smac_hybrid_dwb__rocks_01__s0 --out media/hero/costmap.npz
+.venv/bin/python tools/plot_costmap_figure.py media/hero/costmap.npz --out media/costmap_rocks_01.png
+```
+
+On an RTX 2060, Eevee at 1080p and 32 samples takes about 8.5 s per frame (about 2 h for the 28 s run). The Phase 2 open-loop MuJoCo render is still in `media/tier_a.gif` (`tools/render_tier_a.py`).
 
 ## Docs
 - [DEVLOG.md](DEVLOG.md): design decisions, with the reasons for each

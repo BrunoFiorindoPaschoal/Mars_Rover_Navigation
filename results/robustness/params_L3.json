@@ -1,0 +1,28 @@
+{
+  "actuator_knob": "general_affine_gainprm_forcerange",
+  "chassis_com_offset_x_m": 0.024101957216511753,
+  "chassis_com_offset_y_m": 0.006572962885149421,
+  "chassis_mass_kg": 31.762709193664616,
+  "chassis_mass_scale": 0.8947242026384399,
+  "cmd_latency_s": 0.1,
+  "friction_scale": 0.7099544170005371,
+  "imu_gyro_sigma_rad_s": 0.01,
+  "imu_gyro_z_bias_rad_s": 0.005,
+  "imu_relay_seed": 3032,
+  "level": 3,
+  "lidar_dropout": 0.15,
+  "lidar_noise_sigma_m": 0.04,
+  "lidar_relay_seed": 3031,
+  "motor_gain_scale": {
+    "wheel_fl_joint": 0.8376514568961597,
+    "wheel_fr_joint": 0.9732507760945895,
+    "wheel_rl_joint": 0.9916205192563337,
+    "wheel_rr_joint": 0.8638955658548315
+  },
+  "rover_xml": "/tmp/mars_yard_robustness_worlds/L3_S3/rover.xml",
+  "seed": 3,
+  "total_mass_kg": 36.26270919366462,
+  "wheel_sliding_friction": 0.5679635336004297,
+  "world": "mars",
+  "world_xml": "/tmp/mars_yard_robustness_worlds/L3_S3/mars.xml"
+}

@@ -73,6 +73,29 @@ python3 -m mars_yard_benchmark.analysis \
 | `smac_hybrid + mppi` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | `smac_hybrid + rpp` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
+Success means Nav2 `SUCCEEDED` **and** the ground-truth rover ends within 1.0 m of the goal; otherwise the run is a `goal_miss` (the EKF thought it arrived).
+
+## Robustness
+
+The benchmark under 4 randomization levels: friction, chassis mass and centre of mass, per-wheel motor gain (MJCF), lidar range noise and dropout, gyro noise and bias, command latency (relays). Level 0 is the unchanged benchmark stack.
+
+```bash
+ros2 launch mars_yard_bringup sim.launch.py world:=mars nav:=true rand_level:=2   # one randomized world
+./tools/check_randomization.sh                                                   # perturbations measured in the running sim
+./tools/run_robustness.sh --levels 0,1,2,3 --seeds 2                              # full study, ~11 h (960 runs)
+python3 -m mars_yard_benchmark.robustness_analysis                               # results/robustness/summary.md + plots
+```
+
+Pilot (planner `smac_hybrid`; scenarios `flat_01`, `slope_04`, `rocks_01`, `sand_01` × 2 seeds; true success):
+
+| Controller | L0 | L1 | L2 | L3 |
+|---|---:|---:|---:|---:|
+| DWB | 8/8 | 8/8 | 6/8 | 6/8 |
+| MPPI | 4/8 | 4/8 | 5/8 | 4/8 |
+| RPP | 8/8 | 7/8 | 7/8 | 5/8 |
+
+22 of the 24 failures are `goal_miss` on the 14.5° cross-slope (`slope_04`) and in the rock field: with lower friction the rover slides downhill, and the EKF (wheel speed + gyro) cannot see it. See `results/robustness/plots/` and DEVLOG Phase 7.
+
 ## Docs
 - [DEVLOG.md](DEVLOG.md): design decisions, with the reasons for each
 - [STUDY_GUIDE.md](STUDY_GUIDE.md): the core parts of the code and how to study them

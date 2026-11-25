@@ -39,6 +39,7 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 | 5 | Terrain pipeline (DEM -> hfield + slope map) | Planning on orbital data | **done**, see Part 5 |
 | 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
 | 7 | Benchmark runner + analysis | In-sim reset, evaluation protocol, failure modes | **done**, see Part 7 |
+| 7b | Domain randomization + robustness study | Which controller survives a wrong model, and why | **done**, see Part 8 |
 | 8 | Docker + CI | Reproducibility | planned (Phase 8) |
 
 Sections for each part are filled in as the code lands.
@@ -330,3 +331,37 @@ Sections for each part are filled in as the code lands.
 - Run `./tools/check_teleport.sh` and compare the post-teleport reference run (`(0,0) → (9.0,-0.6)`) against a cold launch of `./tools/check_nav.sh mars`.
 - Run a quick 1-seed subset across all 6 combos on `slope_04` and `rocks_01`: `./tools/run_matrix.sh --seeds 1 --scenarios slope_04,rocks_01`, then inspect `results/benchmark/summary.md` and `results/benchmark/plots/`.
 - Run `ros2 bag info` on one bag in `results/benchmark/bags/` to inspect message counts and file size (`~4 MiB` per 30 s trial).
+
+---
+
+## Part 8 · Domain randomization and the robustness study  *(Phase 7, done)*
+
+**Where it sits:** between the model and everything else. `tools/randomize_world.py` writes a perturbed copy of the MJCF before MuJoCo loads it (friction, mass, centre of mass, per-wheel motor gain); `noise_relay.py` sits between the sensors and their consumers (`/points` → `/points_noisy` for `hazard_mapper`, IMU → `imu_noisy` for the EKF and `hazard_mapper`); `twist_stamper.py` delays the wheel command. Level 0 uses none of this, so it is exactly the Phase 6 stack.
+
+**Read, in this order:**
+1. `tools/randomize_world.py`: the level table, `sample_params()`, how the velocity actuator becomes an affine `<general>` servo with gain `g`, and why terrain friction is scaled too.
+2. `src/mars_yard_bringup/launch/sim.launch.py`: `rand_level` / `rand_seed`, what is only added when `level > 0`, and the topic remappings.
+3. `src/mars_yard_bringup/scripts/noise_relay.py` and `twist_stamper.py` (`latency_s`).
+4. `tools/run_robustness.sh` (cleanup_stack!), `src/mars_yard_benchmark/mars_yard_benchmark/robustness_analysis.py`, `results/robustness/summary.md`.
+5. `tools/check_randomization.sh`: how each perturbation is *measured* in the running sim instead of trusted.
+
+**Concepts to know:**
+- **Domain randomization:** train or tune on many slightly wrong worlds so the result survives the real one. Here it is used for evaluation: how fast does each controller degrade as the model gets more wrong?
+- **MuJoCo contact friction:** for two geoms of equal priority the contact uses the element-wise max of their frictions, so lowering only the wheel's friction often changes nothing.
+- **Velocity servo as affine actuator:** `tau = kv·ctrl − kv·qvel` is `gainprm = kv`, `biasprm = (0, 0, −kv)`; scaling only the gain makes the wheel settle at `g·ctrl`, a weaker or stronger motor.
+- **Observability:** the EKF fuses wheel speed and gyro rate only. Slip sideways on a slope is invisible to both, so the estimate drifts while Nav2 believes it arrived. That is why the pilot's failures are `goal_miss`, not timeouts.
+- **Confounding:** one physics draw per level means "level 2 is worse" may really be "this level-2 rover is worse". More physics seeds per level fix that.
+- **Process hygiene:** `kill -9` skips DDS cleanup; stale FastDDS shared-memory locks in `/dev/shm` and orphan spawners can break every later launch (DEVLOG Phase 7 gotcha).
+- **Docs:** [MuJoCo actuators (`general`, gain/bias)](https://mujoco.readthedocs.io/en/stable/XMLreference.html#actuator-general), [MuJoCo contact parameters](https://mujoco.readthedocs.io/en/stable/computation/index.html#contact), [Tobin et al. 2017, domain randomization](https://arxiv.org/abs/1703.06907), [Fast DDS shared memory transport](https://fast-dds.docs.eprosima.com/en/latest/fastdds/transport/shared_memory/shared_memory.html)
+
+**Self-check questions:**
+1. Why does `randomize_world.py` scale friction on the terrain geoms and not only on the wheels?
+2. With wheel gains 0.84 / 0.97 / 0.99 / 0.86 (L3), which way does the rover pull when driving straight, and which part of the stack corrects it?
+3. Why are almost all failures `goal_miss` instead of `timeout` or `collision`? What sensor would turn them into successes?
+4. Why is physics sampled once per launch with `seed = level` rather than once per run?
+5. Why is Level 0 required to bypass the relays entirely instead of running them with zero noise?
+
+**Experiments:**
+- `ros2 launch mars_yard_bringup sim.launch.py world:=mars nav:=true rand_level:=3` and send an RViz goal across `slope_04`; watch the EKF footprint and `/ground_truth/odom` separate.
+- Rerun one cell with a different physics draw: `./tools/run_robustness.sh --levels 2 --combos smac_hybrid+dwb --scenarios slope_04 --seeds 2 --output-csv /tmp/r.csv` after changing `RAND_SEED` in the script, and compare with the pilot.
+- Set only `cmd_latency_s` high (edit a copied `params.json` level) and see which controller oscillates first.

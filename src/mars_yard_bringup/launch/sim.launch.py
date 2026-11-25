@@ -1,6 +1,8 @@
 """Launch the Mars Yard rover in MuJoCo with ros2_control, EKF, static map->odom TF, and RViz."""
 
+import importlib.util
 import os
+import pathlib
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -13,6 +15,22 @@ from launch_ros.parameter_descriptions import ParameterFile, ParameterValue
 
 def _as_bool(value: str) -> bool:
     return value.strip().lower() in ("true", "1", "yes")
+
+
+def _load_randomizer_module():
+    candidates = [
+        pathlib.Path(os.path.realpath(__file__)).parents[3] / "tools" / "randomize_world.py",
+        pathlib.Path.cwd() / "tools" / "randomize_world.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            spec = importlib.util.spec_from_file_location("mars_yard_randomize_world", str(path))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod
+    raise FileNotFoundError(
+        f"Could not locate tools/randomize_world.py in {[str(c) for c in candidates]}"
+    )
 
 
 def _launch_setup(context, *args, **kwargs):
@@ -28,6 +46,12 @@ def _launch_setup(context, *args, **kwargs):
     use_nav = _as_bool(LaunchConfiguration("nav").perform(context))
     nav_planner = LaunchConfiguration("planner").perform(context)
     nav_controller = LaunchConfiguration("controller").perform(context)
+    rand_level = int(LaunchConfiguration("rand_level").perform(context))
+    rand_seed = int(LaunchConfiguration("rand_seed").perform(context))
+    rand_out_dir = LaunchConfiguration("rand_out_dir").perform(context).strip()
+
+    if rand_level not in (0, 1, 2, 3):
+        raise ValueError(f"Unsupported rand_level '{rand_level}'. Expected 0, 1, 2, or 3.")
 
     bringup_share = get_package_share_directory("mars_yard_bringup")
     description_share = get_package_share_directory("mars_yard_description")
@@ -41,6 +65,20 @@ def _launch_setup(context, *args, **kwargs):
     ekf_yaml = os.path.join(bringup_share, "config", "ekf.yaml")
     hazard_mapper_yaml = os.path.join(nav_share, "config", "hazard_mapper.yaml")
     rviz_config = os.path.join(bringup_share, "rviz", "sim.rviz")
+
+    rand_params = None
+    if rand_level > 0:
+        out_dir = rand_out_dir or f"/tmp/mars_yard_rand_{world}_L{rand_level}_S{rand_seed}"
+        rand_mod = _load_randomizer_module()
+        world_xml_path, rand_params = rand_mod.randomize_world(
+            world=world,
+            level=rand_level,
+            seed=rand_seed,
+            out_dir=pathlib.Path(out_dir),
+            worlds_dir=pathlib.Path(worlds_share),
+            description_dir=pathlib.Path(description_share),
+        )
+        mujoco_model_path = str(world_xml_path)
 
     robot_description_str = Command(
         [
@@ -56,6 +94,15 @@ def _launch_setup(context, *args, **kwargs):
     robot_description = {
         "robot_description": ParameterValue(value=robot_description_str, value_type=str)
     }
+
+    twist_stamper_params = {
+        "use_sim_time": True,
+        "in_topic": "/cmd_vel",
+        "out_topic": "/diff_drive_controller/cmd_vel",
+        "frame_id": "base_link",
+    }
+    if rand_level > 0:
+        twist_stamper_params["latency_s"] = float(rand_params["cmd_latency_s"])
 
     nodes = [
         # Publishes URDF kinematics and /robot_description
@@ -84,14 +131,7 @@ def _launch_setup(context, *args, **kwargs):
             executable="twist_stamper.py",
             name="twist_stamper",
             output="both",
-            parameters=[
-                {
-                    "use_sim_time": True,
-                    "in_topic": "/cmd_vel",
-                    "out_topic": "/diff_drive_controller/cmd_vel",
-                    "frame_id": "base_link",
-                }
-            ],
+            parameters=[twist_stamper_params],
         ),
         # Identity map -> odom TF (replaced by SLAM/AMCL in later phases)
         Node(
@@ -128,7 +168,37 @@ def _launch_setup(context, *args, **kwargs):
             )
         )
 
+    if rand_level > 0:
+        nodes.append(
+            Node(
+                package="mars_yard_bringup",
+                executable="noise_relay.py",
+                name="noise_relay",
+                output="both",
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "points_in": "/points",
+                        "points_out": "/points_noisy",
+                        "imu_in": "/imu_sensor_broadcaster/imu",
+                        "imu_out": "/imu_sensor_broadcaster/imu_noisy",
+                        "lidar_noise_sigma": float(rand_params["lidar_noise_sigma_m"]),
+                        "lidar_dropout": float(rand_params["lidar_dropout"]),
+                        "imu_gyro_sigma": float(rand_params["imu_gyro_sigma_rad_s"]),
+                        "imu_gyro_z_bias": float(rand_params["imu_gyro_z_bias_rad_s"]),
+                        "lidar_seed": int(rand_params["lidar_relay_seed"]),
+                        "imu_seed": int(rand_params["imu_relay_seed"]),
+                    }
+                ],
+            )
+        )
+
     if use_ekf:
+        ekf_remappings = (
+            [("/imu_sensor_broadcaster/imu", "/imu_sensor_broadcaster/imu_noisy")]
+            if rand_level > 0
+            else []
+        )
         nodes.append(
             Node(
                 package="robot_localization",
@@ -136,6 +206,7 @@ def _launch_setup(context, *args, **kwargs):
                 name="ekf_filter_node",
                 output="both",
                 parameters=[ekf_yaml, {"use_sim_time": True}],
+                remappings=ekf_remappings,
             )
         )
 
@@ -151,6 +222,14 @@ def _launch_setup(context, *args, **kwargs):
         )
 
     if use_hazards:
+        hazard_remappings = (
+            [
+                ("/points", "/points_noisy"),
+                ("/imu_sensor_broadcaster/imu", "/imu_sensor_broadcaster/imu_noisy"),
+            ]
+            if rand_level > 0
+            else []
+        )
         nodes.append(
             Node(
                 package="mars_yard_nav",
@@ -158,6 +237,7 @@ def _launch_setup(context, *args, **kwargs):
                 name="hazard_mapper",
                 output="both",
                 parameters=[hazard_mapper_yaml, {"use_sim_time": True}],
+                remappings=hazard_remappings,
             )
         )
 
@@ -239,9 +319,24 @@ def generate_launch_description():
                 description="Nav2 local controller overlay: 'dwb', 'mppi', or 'rpp'.",
             ),
             DeclareLaunchArgument(
+                "rand_level",
+                default_value="0",
+                description="Domain randomization level: 0 (nominal), 1, 2, or 3.",
+            ),
+            DeclareLaunchArgument(
+                "rand_seed",
+                default_value="0",
+                description="RNG seed for domain randomization when rand_level > 0.",
+            ),
+            DeclareLaunchArgument(
+                "rand_out_dir",
+                default_value="",
+                description="Optional directory for generated randomized MJCF and params.json.",
+            ),
+            DeclareLaunchArgument(
                 "randomization",
                 default_value="",
-                description="Placeholder (unused in Phase 5b): terrain/physics randomization profile.",
+                description="Deprecated placeholder kept for backwards compatibility; use rand_level and rand_seed.",
             ),
             OpaqueFunction(function=_launch_setup),
         ]

@@ -276,25 +276,29 @@ class BenchmarkMonitor(Node):
                         self.tracking_errs.append(cte)
 
 
-def load_completed_keys(csv_path: pathlib.Path) -> Set[Tuple[str, str, int]]:
-    done: Set[Tuple[str, str, int]] = set()
+def load_completed_keys(csv_path: pathlib.Path, include_level: bool = False) -> Set[Tuple]:
+    done: Set[Tuple] = set()
     if not csv_path.exists() or csv_path.stat().st_size == 0:
         return done
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             try:
-                done.add((row["combo"], row["scenario"], int(row["seed"])))
+                if include_level:
+                    done.add((int(row["level"]), row["combo"], row["scenario"], int(row["seed"])))
+                else:
+                    done.add((row["combo"], row["scenario"], int(row["seed"])))
             except Exception:
                 continue
     return done
 
 
-def append_csv_row(csv_path: pathlib.Path, row: Dict) -> None:
+def append_csv_row(csv_path: pathlib.Path, row: Dict, fieldnames: Optional[List[str]] = None) -> None:
+    cols = fieldnames if fieldnames is not None else CSV_COLUMNS
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     write_header = (not csv_path.exists()) or (csv_path.stat().st_size == 0)
     with csv_path.open("a", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer = csv.DictWriter(f, fieldnames=cols)
         if write_header:
             writer.writeheader()
         writer.writerow(row)
@@ -380,10 +384,20 @@ def main(argv=None) -> int:
     parser.add_argument("--no-bag", action="store_true", help="Disable MCAP bag recording.")
     parser.add_argument("--sim-timeout", type=float, default=120.0)
     parser.add_argument("--repo", default="", help="Repo root (for obstacles.json fallback).")
+    parser.add_argument(
+        "--level",
+        type=int,
+        default=None,
+        choices=(0, 1, 2, 3),
+        help="Optional domain randomization level (adds 'level' column to CSV and bag prefix).",
+    )
     args = parser.parse_args(argv)
 
     combo = f"{args.planner}+{args.controller}"
     combo_safe = f"{args.planner}_{args.controller}"
+    use_level = args.level is not None
+    csv_columns = (CSV_COLUMNS + ["level"]) if use_level else CSV_COLUMNS
+    log_tag = f"L{args.level} {combo}" if use_level else combo
 
     if args.scenarios:
         scenarios_path = pathlib.Path(args.scenarios)
@@ -409,18 +423,31 @@ def main(argv=None) -> int:
 
     csv_path = pathlib.Path(args.output_csv)
     bags_root = pathlib.Path(args.bags_dir)
-    completed = load_completed_keys(csv_path)
+    completed = load_completed_keys(csv_path, include_level=use_level)
 
-    todo = [(idx, sc, sd) for idx, sc in selected for sd in seeds if (combo, sc["id"], sd) not in completed]
+    if use_level:
+        todo = [
+            (idx, sc, sd)
+            for idx, sc in selected
+            for sd in seeds
+            if (args.level, combo, sc["id"], sd) not in completed
+        ]
+    else:
+        todo = [
+            (idx, sc, sd)
+            for idx, sc in selected
+            for sd in seeds
+            if (combo, sc["id"], sd) not in completed
+        ]
     if not todo:
-        print(f"[{combo}] All {len(selected) * len(seeds)} requested runs already present in {csv_path}.", flush=True)
+        print(f"[{log_tag}] All {len(selected) * len(seeds)} requested runs already present in {csv_path}.", flush=True)
         return 0
 
     rocks = json.loads(obs_path.read_text(encoding="utf-8"))["rocks"]
     rock_pts, rock_meta = build_hazard_rock_contours(rocks, min_exposed_height=0.12)
 
     print(
-        f"[{combo}] Starting benchmark: {len(todo)} runs to execute "
+        f"[{log_tag}] Starting benchmark: {len(todo)} runs to execute "
         f"({len(selected) * len(seeds) - len(todo)} already in {csv_path}), "
         f"sim_timeout={args.sim_timeout:.0f}s, bags={'off' if args.no_bag else str(bags_root)}",
         flush=True,
@@ -485,7 +512,8 @@ def main(argv=None) -> int:
 
             bag_proc = None
             if not args.no_bag:
-                bag_dir = bags_root / f"{combo_safe}__{sc_id}__s{seed}"
+                bag_name = f"L{args.level}__{combo_safe}__{sc_id}__s{seed}" if use_level else f"{combo_safe}__{sc_id}__s{seed}"
+                bag_dir = bags_root / bag_name
                 bag_proc = start_bag_record(bag_dir)
 
             goal = PoseStamped()
@@ -600,10 +628,12 @@ def main(argv=None) -> int:
                 "recoveries": max_recoveries,
                 "rtf": round(rtf, 4),
             }
-            append_csv_row(csv_path, row)
+            if use_level:
+                row["level"] = args.level
+            append_csv_row(csv_path, row, fieldnames=csv_columns)
 
             print(
-                f"  [{run_num:3d}/{len(todo)}] {combo:16s} {sc_id:8s} ({group:5s}) s{seed} -> "
+                f"  [{run_num:3d}/{len(todo)}] {log_tag:19s} {sc_id:8s} ({group:5s}) s{seed} -> "
                 f"{result_str:7s} ({failure_trigger:9s}) t={sim_elapsed:6.2f}s ratio={path_ratio:.2f} "
                 f"err={gt_goal_err:.3f}m cte={row['tracking_err']} clr={row['min_obstacle_clearance']:.2f}m "
                 f"E={row['energy_J']:.0f}J rec={max_recoveries} RTF={rtf:.3f}x (reset={settled.reset_wall_s:.2f}s)",

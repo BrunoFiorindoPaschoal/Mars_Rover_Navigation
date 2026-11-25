@@ -94,6 +94,14 @@ cleanup_stack() {
   pkill -f "mars_yard_bringup" 2>/dev/null || true
   pkill -f "mars_yard_nav" 2>/dev/null || true
   sleep 1
+  # SIGTERM is not always honoured (spawners, lifecycle_manager); a survivor holds the spawner lock
+  # or duplicates Nav2 node names in the next launch, so sweep every ROS node process.
+  pkill -9 -f -- "--ros-args|controller_manager/spawner" 2>/dev/null || true
+  pkill -9 -f "ros2cli.daemon" 2>/dev/null || true
+  sleep 1
+  # kill -9 leaves FastDDS shared-memory port locks in /dev/shm; the next launch's Nav2 nodes then hang
+  # before creating their node. Wipe them, but only when no ROS process is alive.
+  if ! pgrep -f -- "--ros-args" >/dev/null; then rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_*; fi
 }
 trap cleanup_stack EXIT
 
@@ -135,7 +143,7 @@ for COMBO in "${COMBOS[@]}"; do
         tail -n 30 "$LAUNCH_LOG" || true
         break
       fi
-      OUT="$(timeout 5 ros2 control list_controllers 2>/dev/null || true)"
+      OUT="$("$REPO/tools/list_controllers.sh" 2>/dev/null || true)"
       if echo "$OUT" | grep -q "diff_drive_controller.*active" && \
          echo "$OUT" | grep -q "imu_sensor_broadcaster.*active" && \
          echo "$OUT" | grep -q "joint_state_broadcaster.*active"; then

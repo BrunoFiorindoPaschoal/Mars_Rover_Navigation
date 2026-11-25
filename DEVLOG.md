@@ -434,3 +434,47 @@ This was the longest debugging session of Phase 1. The method matters as much as
 - **Alternatives:** (a) trust Nav2's verdict (it judges arrival on the EKF pose, which is what it can see on a real rover); (b) put the rule in `run_benchmark.py` (bakes the threshold into the CSV).
 - **Why:** in the pilot both MPPI combos on `slope_04` were `SUCCEEDED` while the real rover stopped `4.1 m` and `5.1 m` from the goal: the EKF integrates wheel odometry that does not see the downhill slide, so the goal circle was reached only in the EKF's head. Counting that as success would hide the most important finding of the benchmark. `1.0 m` ≈ one rover length and 4× the `0.25 m` Nav2 tolerance; the worst honest success in the pilot is `0.89 m` (`smac_hybrid+dwb`, `slope_04`). With the rule the pilot reads `navfn+mppi` 1/2, `smac_hybrid+mppi` 0/2 (also `rocks_01`, `1.45 m`), all others 100%.
 - **Watch:** the threshold is a choice; report it next to every success-rate table. A localization fix (Phase 7+ idea: slip-aware odometry or a global pose source) would turn `goal_miss` runs into real successes.
+
+## 2026-11-25 · Phase 7 · Domain randomization levels 0–3: what is perturbed and where
+
+- **Decision:** `tools/randomize_world.py --world mars --level L --seed S --out DIR` writes a randomized copy of `mars.xml` + `rover.xml` and `params.json`; `sim.launch.py` takes `rand_level:=0..3` and `rand_seed:=` (defaults `0`: the original MJCF path, no relays, the Phase 6 stack unchanged). Ranges (uniform ±, fixed seed):
+
+  | Param | L0 | L1 | L2 | L3 | Injected in |
+  |---|---|---|---|---|---|
+  | sliding friction scale | 1 | ±10% | ±20% | ±35% | MJCF: wheel default class **and** terrain/sand geoms |
+  | chassis mass scale | 1 | ±5% | ±10% | ±20% | MJCF `<inertial>` |
+  | chassis COM offset x,y | 0 | ±1 cm | ±2 cm | ±4 cm | MJCF `<inertial pos>` |
+  | per-wheel motor gain | 1 | ±5% | ±10% | ±20% | MJCF actuator (see below) |
+  | lidar range σ / dropout | 0 / 0 | 1 cm / 1% | 2 cm / 5% | 4 cm / 15% | `noise_relay.py`: `/points` → `/points_noisy` (noise along the ray) |
+  | gyro σ / z bias | 0 / 0 | 0.002 / 0 | 0.005 / 0.002 | 0.01 / 0.005 rad/s | `noise_relay.py`: IMU → `.../imu_noisy` (EKF + hazard_mapper remapped) |
+  | command latency | 0 | 20 ms | 50 ms | 100 ms | `twist_stamper.py` `latency_s` (sim-time queue, 2 ms timer) |
+
+- **Gain knob:** each wheel `<velocity kv=50 forcerange=±15>` becomes an equivalent affine `<general>` servo, `tau = clip(kv·(g·ctrl − qvel), ±15·g)`; at `g = 1` it compiles to the same actuator. Independent `g` per wheel gives a left/right asymmetry, i.e. a steady yaw pull the controller must correct — the realistic effect of a weak motor.
+- **Friction on both sides:** MuJoCo combines the friction of two touching geoms of equal priority with an element-wise **max**, so scaling only the wheel would make every `scale < 1` a no-op on terrain whose friction is ≥ the wheel's. The randomizer scales wheel and terrain/sand geoms by the same factor.
+- **Seed policy:** physics is sampled once per launch with `seed = level`, so all combos at one level drive on the *same* sampled rover; seeds 0/1 only perturb the start pose (Phase 6 rule). Sampled values (from `results/robustness/params_L*.json`): L1 friction ×1.002, mass ×1.045, latency 20 ms; L2 friction ×0.905, mass ×0.96, wheel gains 0.91–1.05; L3 friction ×0.71, mass ×0.895, wheel gains 0.84–0.99, latency 100 ms.
+- **Alternatives:** per-run physics resampling inside `TeleportPlugin` (mjModel is const in the plugin API; would need a cast and breaks "same physics for every combo"); noise inside the C++ ray plugin (would change Level 0 code paths).
+- **Why:** L0 must be bit-for-bit the benchmark stack, so every perturbation is either a different MJCF file or a relay that is only launched when `level > 0`.
+- **Verification** (`tools/check_randomization.sh`): L0 `check_nav` + `check_teleport` PASS with Phase 6 numbers (reference run 27.95 s, GT err 0.215 m); for L2/L3 the measured relay output matches the sampled values: lidar dropout 5.10% / 15.44% (expected 5% / 15%), range σ 0.0200 / 0.0401 m (0.02 / 0.04), gyro σ_z 0.00526 / 0.00959 rad/s (0.005 / 0.01), gyro z-bias +0.00195 / +0.00508 rad/s (0.002 / 0.005); one Nav2 goal per level SUCCEEDED.
+- **Watch:** one physics sample per level means a level's effect is confounded with that one draw (L1's friction landed at ×1.002, almost nominal). The full study should use several physics seeds per level.
+
+## 2026-11-25 · Phase 7 · Gotcha: `kill -9` cleanup poisons later launches (FastDDS SHM, CLI daemon, orphan spawners)
+
+- **Symptom:** after the first failed relaunch, every later launch failed: spawners `Failed to acquire lock`, `ros2 control list_controllers` hung for minutes (ignoring `timeout`'s SIGTERM), and Nav2 nodes printed nothing at all (`lifecycle_manager` waiting forever on `map_server/get_state`). `check_nav.sh`, unchanged code, failed the same way.
+- **Causes (each verified):** (1) `kill -9` leaves FastDDS shared-memory port locks in `/dev/shm/fastrtps_*`; new participants then hang before the node is created. With `FASTDDS_BUILTIN_TRANSPORTS=UDPv4` `check_nav` passed, and after deleting the stale files (no ROS process alive) it passed again on the default transport (28.25 s). (2) The `ros2` CLI daemon wedged after its first call (listen backlog full), so every daemon-based CLI call hung. (3) Spawners and a `lifecycle_manager` survived SIGTERM; the orphan spawner held `~/.ros/locks/ros2-control-controller-spawner.lock`, the orphan manager duplicated the Nav2 manager's name.
+- **Decision:** `tools/list_controllers.sh` calls the `/controller_manager/list_controllers` service directly (no daemon, `timeout -k`); all check/run scripts use it. `run_matrix.sh` / `run_robustness.sh` cleanup now `kill -9`s every `--ros-args` process, spawners and the CLI daemon, then wipes `/dev/shm/fastrtps_*` **only if no ROS process is alive**.
+- **Watch:** running RViz or another ROS session during a matrix run is still unsafe: the cleanup kills every ROS node on the machine.
+
+## 2026-11-25 · Phase 7 · Robustness pilot: the failure is localization, not control
+
+- **Run:** `tools/run_robustness.sh --levels 0,1,2,3 --combos smac_hybrid+{dwb,mppi,rpp} --scenarios flat_01,slope_04,rocks_01,sand_01 --seeds 2` = 96 runs, 12 launches, 65 min wall (40.7 s/run), RTF 1.000 ± 0.0005 everywhere. Success = Nav2 `SUCCEEDED` and GT goal error ≤ 1.0 m (Phase 6 rule).
+
+  | Combo | L0 | L1 | L2 | L3 | mean GT err L0 → L3 (m) |
+  |---|---:|---:|---:|---:|---|
+  | `smac_hybrid+dwb` | 8/8 | 8/8 | 6/8 | 6/8 | 0.53 → 0.99 |
+  | `smac_hybrid+mppi` | 4/8 | 4/8 | 5/8 | 4/8 | 1.76 → 3.39 |
+  | `smac_hybrid+rpp` | 8/8 | 7/8 | 7/8 | 5/8 | 0.56 → 1.18 |
+
+- **Finding:** almost every failure is a `goal_miss` (Nav2 says SUCCEEDED, the real rover is elsewhere): 22 of 24 failures. `flat_01` and `sand_01` never fail at any level; `slope_04` (14.5° cross-slope) is where randomization bites: DWB goes from 0.62–0.83 m (L0) to 1.12–1.24 m (L2) and 2.09–2.40 m (L3), RPP from 0.82–0.90 m to 1.74–2.76 m. Lower friction (L2 ×0.905, L3 ×0.71) lets the rover slide further downhill, and the EKF, which only integrates wheel speed and gyro rate, cannot see lateral slip. The controllers track the EKF pose well; the pose is wrong.
+- **MPPI** is the least robust: it already misses `slope_04` and `rocks_01` at L0 (4–5 m downhill slide), and at L3 it slides 10.8 m on `slope_04` and hits a rock (footprint clearance −0.06 m). The only two real collisions are MPPI (L2 `rocks_01` s1, −0.09 m, Nav2 FAILURE; L3 `slope_04` s1).
+- **Full matrix estimate:** 6 combos × 4 levels × 20 scenarios × 2 seeds = 960 runs ≈ 10.9 h at 40.7 s/run. Not run.
+- **Watch:** 4 scenarios × 2 seeds × 1 physics draw per level is small; DWB's 6/8 at L2 and L3 is the same two `slope_04` runs. Next steps that would move these numbers: slip-aware odometry or a global pose source (visual odometry / orbital map matching), and more physics seeds per level.

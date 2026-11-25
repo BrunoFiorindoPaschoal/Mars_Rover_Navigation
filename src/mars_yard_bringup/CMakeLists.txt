@@ -9,6 +9,7 @@ install(DIRECTORY launch config rviz
 
 install(PROGRAMS
   scripts/twist_stamper.py
+  scripts/noise_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

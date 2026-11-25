@@ -1,0 +1,28 @@
+{
+  "actuator_knob": "general_affine_gainprm_forcerange",
+  "chassis_com_offset_x_m": 0.0,
+  "chassis_com_offset_y_m": 0.0,
+  "chassis_mass_kg": 35.5,
+  "chassis_mass_scale": 1.0,
+  "cmd_latency_s": 0.0,
+  "friction_scale": 1.0,
+  "imu_gyro_sigma_rad_s": 0.0,
+  "imu_gyro_z_bias_rad_s": 0.0,
+  "imu_relay_seed": 2,
+  "level": 0,
+  "lidar_dropout": 0.0,
+  "lidar_noise_sigma_m": 0.0,
+  "lidar_relay_seed": 1,
+  "motor_gain_scale": {
+    "wheel_fl_joint": 1.0,
+    "wheel_fr_joint": 1.0,
+    "wheel_rl_joint": 1.0,
+    "wheel_rr_joint": 1.0
+  },
+  "rover_xml": "/home/bhfpa/mars-yard-mujoco/src/mars_yard_description/mjcf/rover.xml",
+  "seed": 0,
+  "total_mass_kg": 40.0,
+  "wheel_sliding_friction": 0.8,
+  "world": "mars",
+  "world_xml": "/home/bhfpa/mars-yard-mujoco/src/mars_yard_worlds/worlds/mars.xml"
+}

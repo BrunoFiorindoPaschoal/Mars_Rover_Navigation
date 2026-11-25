@@ -23,6 +23,7 @@ setup(
         "console_scripts": [
             "run_benchmark = mars_yard_benchmark.run_benchmark:main",
             "analysis = mars_yard_benchmark.analysis:main",
+            "robustness_analysis = mars_yard_benchmark.robustness_analysis:main",
         ],
     },
 )

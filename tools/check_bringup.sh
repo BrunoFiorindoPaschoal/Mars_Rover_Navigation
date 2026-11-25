@@ -55,7 +55,7 @@ LAUNCH_PID=$!
 
 READY=0
 for _ in $(seq 1 40); do
-  OUT="$(ros2 control list_controllers 2>/dev/null || true)"
+  OUT="$("$REPO/tools/list_controllers.sh" 2>/dev/null || true)"
   if echo "$OUT" | grep -q "diff_drive_controller.*active" && \
      echo "$OUT" | grep -q "imu_sensor_broadcaster.*active" && \
      echo "$OUT" | grep -q "joint_state_broadcaster.*active"; then
@@ -66,7 +66,7 @@ for _ in $(seq 1 40); do
 done
 
 echo "--- Active controllers ---"
-ros2 control list_controllers
+"$REPO/tools/list_controllers.sh"
 if [ "$READY" -ne 1 ]; then
   echo "ERROR: Not all 3 controllers became active. Last 40 lines of $LAUNCH_LOG:"
   tail -n 40 "$LAUNCH_LOG" || true

@@ -24,6 +24,7 @@ from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import Imu, PointCloud2, PointField
+from std_srvs.srv import Empty
 import tf2_ros
 
 from mars_yard_nav.hazard_core import (
@@ -156,6 +157,7 @@ class HazardMapperNode(Node):
 
         self.create_subscription(Imu, imu_topic, self._on_imu, 100)
         self.create_subscription(PointCloud2, points_topic, self._on_points, qos_reliable)
+        self._clear_srv = self.create_service(Empty, "~/clear", self._on_clear)
 
         self._warned_no_imu = False
         self._warned_no_tf = False
@@ -165,6 +167,15 @@ class HazardMapperNode(Node):
             f"cell={self._cfg.cell_size:.2f}m, step_thresh={self._cfg.step_threshold:.2f}m, "
             f"win_r={self._cfg.window_radius_m:.2f}m, range=[{self._cfg.min_range:.2f}, {self._cfg.max_range:.2f}]m"
         )
+
+    def _on_clear(self, _request: Empty.Request, response: Empty.Response) -> Empty.Response:
+        self._map.clear()
+        stamp = self.get_clock().now().to_msg()
+        self._hazards_pub.publish(
+            _pack_xyz_pointcloud2(np.empty((0, 3), dtype=np.float32), self._odom_frame, stamp)
+        )
+        self.get_logger().info("Cleared rolling hazard memory.")
+        return response
 
     def _on_imu(self, msg: Imu) -> None:
         q = msg.orientation

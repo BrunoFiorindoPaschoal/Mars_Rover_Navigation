@@ -165,5 +165,61 @@ TEST(MetricsCoreTest, EnergyAccumulatorSignsAndMonotonicity)
   EXPECT_DOUBLE_EQ(acc.energy(), 0.0);
 }
 
+TEST(MetricsCoreTest, TrackerResetZeroesAccumulatorsAndReanchorsDriftReferences)
+{
+  MetricsTracker tracker;
+  tracker.update_gt(Pose2D{0.0, 0.0, 0.0}, Vec3{0.0, 0.0, 0.0});
+  tracker.update_ekf(Pose2D{0.0, 0.0, 0.0});
+  tracker.update_wheel(Pose2D{0.0, 0.0, 0.0});
+  tracker.set_plan({Point2D{0.0, 0.0}, Point2D{10.0, 0.0}});
+
+  // Simulate driving and accumulating drift, distance, slip, lateral slide, and energy.
+  tracker.update_gt(Pose2D{4.0, 0.5, 0.1}, Vec3{0.36, 0.05, 0.0});
+  tracker.update_ekf(Pose2D{3.8, 0.2, 0.15});
+  tracker.update_wheel(Pose2D{3.5, 0.0, 0.5});
+  tracker.update_joints(1.0, {3.333, 3.333, 3.333, 3.333}, true, 0.12,
+                        {4.0, 4.0, 4.0, 4.0}, {3.333, 3.333, 3.333, 3.333});
+
+  const MetricsSnapshot before = tracker.snapshot();
+  EXPECT_GT(before.true_distance, 4.0);
+  EXPECT_GT(before.ekf_pos_drift, 0.3);
+  EXPECT_GT(before.wheel_pos_drift, 0.5);
+  EXPECT_GT(before.energy, 50.0);
+  EXPECT_GT(before.lateral_slide, 0.04);
+  EXPECT_GT(before.slip_ratio, 0.05);
+  EXPECT_NEAR(before.cross_track_error, 0.5, 1e-12);
+
+  // Teleport rover to (5, -3, pi/2), EKF reset to (5, -3, pi/2), wheel odom un-reset at (3.5, 0.0, 0.5).
+  tracker.update_gt(Pose2D{5.0, -3.0, 0.5 * kPi}, Vec3{0.0, 0.0, 0.0});
+  tracker.update_ekf(Pose2D{5.0, -3.0, 0.5 * kPi});
+  tracker.reset(/*reanchor_to_latest=*/true);
+
+  const MetricsSnapshot after_reset = tracker.snapshot();
+  EXPECT_DOUBLE_EQ(after_reset.true_distance, 0.0);
+  EXPECT_DOUBLE_EQ(after_reset.energy, 0.0);
+  EXPECT_DOUBLE_EQ(after_reset.lateral_slide, 0.0);
+  EXPECT_DOUBLE_EQ(after_reset.slip_ratio, 0.0);
+  EXPECT_TRUE(std::isnan(after_reset.slip_instant));
+  EXPECT_TRUE(std::isnan(after_reset.cross_track_error));
+  EXPECT_NEAR(after_reset.ekf_pos_drift, 0.0, 1e-12);
+  EXPECT_NEAR(after_reset.ekf_yaw_drift, 0.0, 1e-12);
+  EXPECT_NEAR(after_reset.wheel_pos_drift, 0.0, 1e-12);
+  EXPECT_NEAR(after_reset.wheel_yaw_drift, 0.0, 1e-12);
+
+  // Drive 2 m along new heading (+y in world from (5, -3)) and verify relative drift + map-frame CTE.
+  tracker.set_plan({Point2D{5.0, -3.0}, Point2D{5.0, 5.0}});
+  tracker.update_gt(Pose2D{5.1, -1.0, 0.5 * kPi}, Vec3{0.4, 0.0, 0.0});
+  tracker.update_ekf(Pose2D{5.0, -1.0, 0.5 * kPi});
+  // Wheel odom advances 2.0 m along its own local +x (heading 0.5 rad).
+  tracker.update_wheel(Pose2D{3.5 + 2.0 * std::cos(0.5), 2.0 * std::sin(0.5), 0.5});
+
+  const MetricsSnapshot after_drive = tracker.snapshot();
+  EXPECT_NEAR(after_drive.true_distance, std::hypot(0.1, 2.0), 1e-12);
+  EXPECT_NEAR(after_drive.ekf_pos_drift, 0.1, 1e-12);
+  EXPECT_NEAR(after_drive.ekf_yaw_drift, 0.0, 1e-12);
+  EXPECT_NEAR(after_drive.wheel_pos_drift, 0.1, 1e-12);
+  EXPECT_NEAR(after_drive.cross_track_error, 0.1, 1e-12);
+}
+
 }  // namespace
 }  // namespace mars_yard_metrics

@@ -194,4 +194,164 @@ void EnergyAccumulator::reset()
   energy_ = 0.0;
 }
 
+void MetricsTracker::maybe_capture_origins()
+{
+  if (!has_gt_origin_ && has_gt_ && (has_ekf_ || has_wheel_))
+  {
+    gt_origin_ = latest_gt_;
+    prev_gt_for_dist_ = latest_gt_;
+    has_gt_origin_ = true;
+  }
+  if (!has_ekf_origin_ && has_gt_origin_ && has_ekf_)
+  {
+    ekf_origin_ = latest_ekf_;
+    has_ekf_origin_ = true;
+  }
+  if (!has_wheel_origin_ && has_gt_origin_ && has_wheel_)
+  {
+    wheel_origin_ = latest_wheel_;
+    has_wheel_origin_ = true;
+  }
+}
+
+void MetricsTracker::update_gt(const Pose2D& gt, const Vec3& v_body)
+{
+  latest_gt_ = gt;
+  latest_v_body_ = v_body;
+  has_gt_ = true;
+
+  maybe_capture_origins();
+
+  if (has_gt_origin_)
+  {
+    true_distance_ += std::hypot(latest_gt_.x - prev_gt_for_dist_.x,
+                                 latest_gt_.y - prev_gt_for_dist_.y);
+    prev_gt_for_dist_ = latest_gt_;
+  }
+}
+
+void MetricsTracker::update_ekf(const Pose2D& ekf)
+{
+  latest_ekf_ = ekf;
+  has_ekf_ = true;
+  maybe_capture_origins();
+}
+
+void MetricsTracker::update_wheel(const Pose2D& wheel)
+{
+  latest_wheel_ = wheel;
+  has_wheel_ = true;
+  maybe_capture_origins();
+}
+
+void MetricsTracker::update_joints(double dt,
+                                   const std::array<double, 4>& wheel_omegas,
+                                   bool have_all_wheels,
+                                   double wheel_radius,
+                                   const std::vector<double>& torques,
+                                   const std::vector<double>& effort_omegas)
+{
+  if (have_all_wheels && has_gt_)
+  {
+    const double v_wheel = wheel_linear_velocity(wheel_omegas, wheel_radius);
+    slip_acc_.update(dt, v_wheel, latest_v_body_.x, latest_v_body_.y);
+    slip_instant_ = instantaneous_slip(v_wheel, latest_v_body_.x);
+    has_slip_instant_ = true;
+  }
+
+  if (!torques.empty())
+  {
+    energy_acc_.update(dt, torques, effort_omegas);
+  }
+}
+
+void MetricsTracker::set_plan(std::vector<Point2D> plan_points)
+{
+  plan_points_ = std::move(plan_points);
+}
+
+void MetricsTracker::reset(bool reanchor_to_latest)
+{
+  true_distance_ = 0.0;
+  slip_instant_ = std::numeric_limits<double>::quiet_NaN();
+  has_slip_instant_ = false;
+  slip_acc_.reset();
+  energy_acc_.reset();
+  plan_points_.clear();
+
+  if (reanchor_to_latest)
+  {
+    has_gt_origin_ = has_gt_;
+    has_ekf_origin_ = has_ekf_;
+    has_wheel_origin_ = has_wheel_;
+    if (has_gt_)
+    {
+      gt_origin_ = latest_gt_;
+      prev_gt_for_dist_ = latest_gt_;
+    }
+    if (has_ekf_)
+    {
+      ekf_origin_ = latest_ekf_;
+    }
+    if (has_wheel_)
+    {
+      wheel_origin_ = latest_wheel_;
+    }
+  }
+  else
+  {
+    has_gt_ = false;
+    has_ekf_ = false;
+    has_wheel_ = false;
+    has_gt_origin_ = false;
+    has_ekf_origin_ = false;
+    has_wheel_origin_ = false;
+    gt_origin_ = Pose2D{};
+    ekf_origin_ = Pose2D{};
+    wheel_origin_ = Pose2D{};
+    prev_gt_for_dist_ = Pose2D{};
+  }
+}
+
+MetricsSnapshot MetricsTracker::snapshot() const
+{
+  const double nan_val = std::numeric_limits<double>::quiet_NaN();
+  MetricsSnapshot out;
+  out.ekf_pos_drift = nan_val;
+  out.ekf_yaw_drift = nan_val;
+  out.wheel_pos_drift = nan_val;
+  out.wheel_yaw_drift = nan_val;
+  out.slip_ratio = slip_acc_.slip_ratio();
+  out.slip_instant = has_slip_instant_ ? slip_instant_ : nan_val;
+  out.lateral_slide = slip_acc_.lateral_slide();
+  out.true_distance = true_distance_;
+  out.energy = energy_acc_.energy();
+  out.cross_track_error = nan_val;
+
+  if (has_gt_origin_)
+  {
+    const Pose2D gt_rel = relative_pose(gt_origin_, latest_gt_);
+    if (has_ekf_ && has_ekf_origin_)
+    {
+      const Pose2D ekf_rel = relative_pose(ekf_origin_, latest_ekf_);
+      const DriftResult d = drift(ekf_rel, gt_rel);
+      out.ekf_pos_drift = d.pos_err;
+      out.ekf_yaw_drift = d.yaw_err;
+    }
+    if (has_wheel_ && has_wheel_origin_)
+    {
+      const Pose2D wheel_rel = relative_pose(wheel_origin_, latest_wheel_);
+      const DriftResult d = drift(wheel_rel, gt_rel);
+      out.wheel_pos_drift = d.pos_err;
+      out.wheel_yaw_drift = d.yaw_err;
+    }
+    if (!plan_points_.empty())
+    {
+      // /plan poses are in map (= world) frame, matching latest_gt_ after any teleport.
+      out.cross_track_error = cross_track_error(latest_gt_.x, latest_gt_.y, plan_points_);
+    }
+  }
+  return out;
+}
+
 }  // namespace mars_yard_metrics

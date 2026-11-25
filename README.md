@@ -34,7 +34,44 @@ Headless verification:
 
 ```bash
 ./tools/check_nav.sh mars smac_hybrid dwb
+./tools/check_teleport.sh
 ```
+
+## Benchmark
+
+20 fixed scenarios on the Jezero Mars world (`src/mars_yard_benchmark/config/scenarios.yaml`, 5 per group: `flat`, `slope`, `rocks`, `sand`), evaluated across 6 planner × controller combinations (`navfn | smac_hybrid` × `dwb | mppi | rpp`) using in-sim rover resets (`~1.4 s` per reset vs `~16.8 s` per relaunch).
+
+Run the full 600-run matrix (6 combos × 20 scenarios × 5 seeds, headless, resumable, ~5–6 h overnight):
+
+```bash
+./tools/run_matrix.sh --seeds 5
+```
+
+Or run a smaller subset (e.g., 1 seed on two scenarios):
+
+```bash
+./tools/run_matrix.sh --seeds 1 --scenarios slope_04,rocks_01
+```
+
+Produce summary tables (`results/benchmark/summary.md`) and plots (`results/benchmark/plots/`):
+
+```bash
+python3 -m mars_yard_benchmark.analysis \
+  --csv results/benchmark/benchmark.csv \
+  --out-md results/benchmark/summary.md \
+  --plots-dir results/benchmark/plots
+```
+
+### Results (full 600-run matrix — pending overnight run)
+
+| Planner × Controller | Flat | Slope | Rocks | Sand | Overall | Time (s) | Path ratio | Tracking err (m) | Energy (J) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `navfn + dwb` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `navfn + mppi` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `navfn + rpp` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `smac_hybrid + dwb` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `smac_hybrid + mppi` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| `smac_hybrid + rpp` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 ## Docs
 - [DEVLOG.md](DEVLOG.md): design decisions, with the reasons for each

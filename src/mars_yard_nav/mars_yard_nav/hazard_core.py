@@ -461,6 +461,15 @@ class RollingHazardMap:
             return np.empty((0, 3), dtype=np.float32)
         return np.vstack(parts)
 
+    def clear(self) -> None:
+        """Clear all rolling hazard/free memory back to unknown."""
+        self.initialized = False
+        self.origin_ix = -(self.dim // 2)
+        self.origin_iy = -(self.dim // 2)
+        self.state.fill(-1)
+        self.score.fill(0)
+        self.stamp.fill(-math.inf)
+
     def origin_world(self) -> Tuple[float, float]:
         """World (odom) position of the bottom-left corner of cell (0, 0)."""
         return self.origin_ix * self.cell_size, self.origin_iy * self.cell_size

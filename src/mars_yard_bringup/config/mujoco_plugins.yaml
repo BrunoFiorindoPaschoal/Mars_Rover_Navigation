@@ -39,3 +39,15 @@
         range_max: 8.0
         publish_rate: 5.0
         geomgroups: [1, 1, 0, 1, 0, 0]
+
+      # In-simulation rover teleport plugin for fast back-to-back benchmark resets.
+      teleport_plugin:
+        type: "mars_yard_sim_plugins/TeleportPlugin"
+        topic: "/sim/teleport"
+        done_topic: "/sim/teleport_done"
+        free_joint: "base_free_joint"
+        base_body: "base_link"
+        front_axle_joint: "front_axle_joint"
+        spawn_clearance: 0.275
+        extra_clearance: 0.03
+        geomgroups: [1, 1, 0, 1, 0, 0]

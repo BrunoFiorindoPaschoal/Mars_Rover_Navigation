@@ -10,6 +10,7 @@ find_package(nav_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 add_library(metrics_core STATIC
   src/metrics_core.cpp
@@ -30,6 +31,7 @@ target_link_libraries(metrics_node PRIVATE
   ${nav_msgs_TARGETS}
   ${sensor_msgs_TARGETS}
   ${std_msgs_TARGETS}
+  ${std_srvs_TARGETS}
 )
 
 install(

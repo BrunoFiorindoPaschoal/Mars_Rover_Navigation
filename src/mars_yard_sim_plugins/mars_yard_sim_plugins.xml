@@ -7,4 +7,13 @@
       simulation-time rate using mj_multiRay and publishes REP-117 compliant LaserScan messages.
     </description>
   </class>
+  <class name="mars_yard_sim_plugins/TeleportPlugin"
+         type="mars_yard_sim_plugins::TeleportPlugin"
+         base_class_type="mujoco_ros2_control_plugins::MuJoCoROS2ControlPluginBase">
+    <description>
+      In-simulation rover teleport plugin that subscribes to /sim/teleport (Pose2D),
+      places base_free_joint onto terrain in pre_step with zeroed velocities, and
+      publishes /sim/teleport_done (Header) stamped with sim time.
+    </description>
+  </class>
 </library>

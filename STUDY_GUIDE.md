@@ -38,7 +38,7 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 | 4 | Rover MJCF/URDF + contact physics | Explains slip and jitter, and every number in the model | **done**, see Part 4 |
 | 5 | Terrain pipeline (DEM -> hfield + slope map) | Planning on orbital data | **done**, see Part 5 |
 | 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
-| 7 | Benchmark runner + analysis | Evaluation protocol | planned (Phase 6) |
+| 7 | Benchmark runner + analysis | In-sim reset, evaluation protocol, failure modes | **done**, see Part 7 |
 | 8 | Docker + CI | Reproducibility | planned (Phase 8) |
 
 Sections for each part are filled in as the code lands.
@@ -292,3 +292,41 @@ Sections for each part are filled in as the code lands.
 **Experiments:**
 - Run `colcon test --merge-install --packages-select mars_yard_metrics` and break `wrap_angle` (e.g., return `angle` unchanged); inspect `colcon test-result --verbose` to see which gtest cases fail.
 - Run `./tools/check_metrics.sh flat` and `./tools/check_metrics.sh mars`, then compare `lateral_slide`, `ekf_pos_drift`, and the forward vs turn energy breakdown between the two worlds.
+
+---
+
+## Part 7 · In-sim reset, benchmark runner, and analysis  *(Phase 6, done)*
+
+**Where it sits:** wraps the entire simulation + Nav2 stack so one launch per planner × controller combo can execute dozens or hundreds of back-to-back evaluation trials cleanly, record compact MCAP telemetry bags, log crash-safe CSV rows, and aggregate results into summary tables and plots.
+
+**The evaluation loop (one trial inside `run_benchmark.py`):**
+1. **In-sim reset (`SimResetter.reset`):** cancel any active Nav2 goal → publish zero `/cmd_vel` and `/cmd_vel_nav` → publish `Pose2D` on `/sim/teleport` → `TeleportPlugin::pre_step()` samples terrain height with 5 downward `mj_ray` casts (centre + 4 wheel footprints), sets `base_free_joint` `qpos` with `+0.305 m` clearance and yaw-only quaternion, zeroes `qvel`/`qacc`/`qacc_warmstart`/`ctrl` (leaving wheel `qpos` intact), calls `mj_forward()`, and publishes `/sim/teleport_done`.
+2. **Settle and re-anchor:** wait until `/ground_truth/odom` speed `< 0.02 m/s` and `|wz| < 0.02 rad/s` (max `5 s` sim) → publish true settled pose on `/set_pose` (`frame: odom`) to `ekf_filter_node` → call `/hazard_mapper/clear` → call `ClearEntireCostmap` on global and local costmaps → wait briefly for fresh perception → call `/metrics_node/reset`. Mean reset takes **`~1.39 s`** wall vs **`~16.8 s`** for a full relaunch (**`12.1×` speedup**).
+3. **Execute & monitor:** start `ros2 bag record -s mcap` on telemetry topics (excluding heavy `/points` and `/scan`), send goal via `BasicNavigator.goToPose()`, and monitor live for `timeout`, `stuck` (`< 0.3 m` move in `20 s`), `collision` (oriented footprint vs oriented hazard rock ellipse `< 0.0 m`), `tipover` (`|roll|, |pitch| > 45°`), or `aborted` (Nav2 `FAILED`).
+4. **Persist & analyze:** stop the bag cleanly, append + `fsync` one row to `results/benchmark/benchmark.csv` (resumable on restart), and run `analysis.py` to build `summary.md` and PNG plots (`success_heatmap.png`, `time_boxplot.png`, `tracking_error_boxplot.png`).
+
+**Read, in this order:**
+1. `src/mars_yard_sim_plugins/include/mars_yard_sim_plugins/teleport_plugin.hpp` and `src/mars_yard_sim_plugins/src/teleport_plugin.cpp`: thread-safe mutex latch from ROS callback to `pre_step()`, 5-point wheel-footprint raycasting, and why wheel `qpos` must not be zeroed.
+2. `src/mars_yard_metrics/include/mars_yard_metrics/metrics_core.hpp` (`MetricsTracker`) and `src/mars_yard_metrics/src/metrics_node.cpp` (`/metrics_node/reset`): how accumulators reset and drift origins re-anchor at arbitrary poses.
+3. `src/mars_yard_nav/scripts/hazard_mapper.py` (`~/clear`) and `src/mars_yard_benchmark/mars_yard_benchmark/sim_reset.py`: the complete reset ordering and why hazard clearing must precede costmap clearing.
+4. `tools/make_scenarios.py` and `src/mars_yard_benchmark/config/scenarios.yaml`: deterministic scenario construction across `flat`, `slope`, `rocks`, and `sand`.
+5. `src/mars_yard_benchmark/mars_yard_benchmark/geometry.py`, `run_benchmark.py`, `analysis.py`, and `tools/run_matrix.sh`: failure detection, resumable CSV logging, stack-health recovery, and aggregation.
+6. `tools/check_teleport.sh` and `tools/tests/test_benchmark_analysis.py`: end-to-end reset verification and offline unit tests.
+
+**Concepts to know:**
+- **Physics thread vs ROS executor thread:** `pre_step(mjData*)` runs on the MuJoCo physics thread with exclusive access to live `mjData`; ROS topic callbacks run on the executor thread. Passing requests through a mutex-guarded latch and acknowledging via a `RealtimePublisher` topic avoids data races and deadlocks.
+- **Continuous wheel encoders across teleports:** `diff_drive_controller` computes wheel velocity from joint position deltas (`position_feedback: true`). Keeping wheel `qpos` continuous while zeroing `qvel` prevents a massive single-tick odometry impulse, and re-anchoring `wheel_origin_` in `MetricsTracker::reset()` lets wheel drift start cleanly at `0` for every trial.
+- **State hygiene in multi-trial benchmarks:** forgetting to clear rolling perception memory (`hazard_mapper`), velocity smoother buffers (`/cmd_vel_nav`), or costmaps leaks information from trial `N` into trial `N+1` and biases results. Repeating a known reference run *after* teleports (`check_teleport.sh`) is a direct empirical proof of reset cleanliness.
+- **Resumable, crash-safe experiment harnesses:** flushing and `fsync`ing every row immediately, keying skips on `(combo, scenario, seed)`, and detecting degraded RTF (`< 0.9`) or clock stalls turns a 6-hour overnight matrix into a reliable pipeline.
+- **Docs:** [Nav2 Simple Commander API](https://docs.nav2.org/commander_api/index.html), [robot_localization set_pose](https://docs.ros.org/en/jazzy/p/robot_localization/), [rosbag2 MCAP](https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Recording-And-Playing-Back-Data/Recording-And-Playing-Back-Data.html), [MuJoCo `mj_ray`](https://mujoco.readthedocs.io/en/stable/APIreference/APIfunctions.html#mj-ray)
+
+**Self-check questions:**
+1. Why does `TeleportPlugin` cast 5 downward rays (base centre + 4 rotated wheel positions) instead of 1 ray at `(x, y)`? What happens on a 14° slope with only 1 ray?
+2. What would happen to `/diff_drive_controller/odom` and the EKF if `TeleportPlugin` zeroed wheel `qpos` as well as wheel `qvel`?
+3. Why must `/hazard_mapper/clear` be called *before* `ClearEntireCostmap` on the global and local costmaps?
+4. Why does `run_benchmark.py` record `/tf`, `/plan`, `/ground_truth/odom`, and `/metrics/*` into MCAP bags while excluding `/points` and `/scan`?
+
+**Experiments:**
+- Run `./tools/check_teleport.sh` and compare the post-teleport reference run (`(0,0) → (9.0,-0.6)`) against a cold launch of `./tools/check_nav.sh mars`.
+- Run a quick 1-seed subset across all 6 combos on `slope_04` and `rocks_01`: `./tools/run_matrix.sh --seeds 1 --scenarios slope_04,rocks_01`, then inspect `results/benchmark/summary.md` and `results/benchmark/plots/`.
+- Run `ros2 bag info` on one bag in `results/benchmark/bags/` to inspect message counts and file size (`~4 MiB` per 30 s trial).

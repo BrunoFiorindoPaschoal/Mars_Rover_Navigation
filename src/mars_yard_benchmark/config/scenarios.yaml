@@ -1,0 +1,299 @@
+world: mars
+seed: 42
+count: 20
+scenarios:
+- id: flat_01
+  group: flat
+  start:
+    x: -0.5
+    y: 14.0
+    yaw: -1.951
+  goal:
+    x: -3.5
+    y: 6.5
+    yaw: -1.951
+  straight_dist: 8.078
+  meta:
+    max_corridor_slope_deg: 3.62
+    p90_slope_deg: 3.11
+- id: flat_02
+  group: flat
+  start:
+    x: -21.0
+    y: 14.5
+    yaw: 1.272
+  goal:
+    x: -19.0
+    y: 21.0
+    yaw: 1.272
+  straight_dist: 6.801
+  meta:
+    max_corridor_slope_deg: 3.41
+    p90_slope_deg: 3.14
+- id: flat_03
+  group: flat
+  start:
+    x: -12.0
+    y: 12.5
+    yaw: 0.291
+  goal:
+    x: -2.0
+    y: 15.5
+    yaw: 0.291
+  straight_dist: 10.44
+  meta:
+    max_corridor_slope_deg: 3.38
+    p90_slope_deg: 2.68
+- id: flat_04
+  group: flat
+  start:
+    x: -1.5
+    y: 13.5
+    yaw: 1.914
+  goal:
+    x: -4.0
+    y: 20.5
+    yaw: 1.914
+  straight_dist: 7.433
+  meta:
+    max_corridor_slope_deg: 2.57
+    p90_slope_deg: 2.26
+- id: flat_05
+  group: flat
+  start:
+    x: 0.0
+    y: 5.5
+    yaw: 2.159
+  goal:
+    x: -4.0
+    y: 11.5
+    yaw: 2.159
+  straight_dist: 7.211
+  meta:
+    max_corridor_slope_deg: 3.98
+    p90_slope_deg: 3.78
+- id: slope_01
+  group: slope
+  start:
+    x: 11.5
+    y: -15.5
+    yaw: -0.05
+  goal:
+    x: 21.5
+    y: -16.0
+    yaw: -0.05
+  straight_dist: 10.012
+  meta:
+    max_corridor_slope_deg: 14.22
+    p90_slope_deg: 11.8
+    frac_8_18_deg: 0.62
+- id: slope_02
+  group: slope
+  start:
+    x: 1.0
+    y: -5.0
+    yaw: -3.024
+  goal:
+    x: -7.5
+    y: -6.0
+    yaw: -3.024
+  straight_dist: 8.559
+  meta:
+    max_corridor_slope_deg: 11.95
+    p90_slope_deg: 11.06
+    frac_8_18_deg: 0.64
+- id: slope_03
+  group: slope
+  start:
+    x: 8.0
+    y: -12.5
+    yaw: 0.644
+  goal:
+    x: 14.0
+    y: -8.0
+    yaw: 0.644
+  straight_dist: 7.5
+  meta:
+    max_corridor_slope_deg: 14.44
+    p90_slope_deg: 11.94
+    frac_8_18_deg: 0.82
+- id: slope_04
+  group: slope
+  start:
+    x: 4.5
+    y: -16.5
+    yaw: 2.251
+  goal:
+    x: -4.0
+    y: -6.0
+    yaw: 2.251
+  straight_dist: 13.509
+  meta:
+    max_corridor_slope_deg: 14.85
+    p90_slope_deg: 14.49
+    frac_8_18_deg: 1.0
+- id: slope_05
+  group: slope
+  start:
+    x: -8.0
+    y: 3.5
+    yaw: -1.249
+  goal:
+    x: -4.5
+    y: -7.0
+    yaw: -1.249
+  straight_dist: 11.068
+  meta:
+    max_corridor_slope_deg: 11.83
+    p90_slope_deg: 11.13
+    frac_8_18_deg: 0.68
+- id: rocks_01
+  group: rocks
+  start:
+    x: -14.49
+    y: 11.78
+    yaw: -1.149
+  goal:
+    x: -10.46
+    y: 2.81
+    yaw: -1.149
+  straight_dist: 9.839
+  meta:
+    target: boulder_7
+    min_straight_rock_dist_m: 0.0
+    max_corridor_slope_deg: 7.06
+- id: rocks_02
+  group: rocks
+  start:
+    x: 14.41
+    y: 0.35
+    yaw: -1.59
+  goal:
+    x: 14.22
+    y: -9.52
+    yaw: -1.59
+  straight_dist: 9.869
+  meta:
+    target: rock_9
+    min_straight_rock_dist_m: 0.0
+    max_corridor_slope_deg: 9.63
+- id: rocks_03
+  group: rocks
+  start:
+    x: 8.77
+    y: 10.76
+    yaw: 0.881
+  goal:
+    x: 15.24
+    y: 18.59
+    yaw: 0.881
+  straight_dist: 10.156
+  meta:
+    target: rock_27
+    min_straight_rock_dist_m: 0.0
+    max_corridor_slope_deg: 7.75
+- id: rocks_04
+  group: rocks
+  start:
+    x: 21.39
+    y: -8.05
+    yaw: -1.492
+  goal:
+    x: 22.19
+    y: -18.1
+    yaw: -1.492
+  straight_dist: 10.085
+  meta:
+    target: rock_10
+    min_straight_rock_dist_m: 0.006
+    max_corridor_slope_deg: 7.82
+- id: rocks_05
+  group: rocks
+  start:
+    x: 9.71
+    y: 2.9
+    yaw: -2.287
+  goal:
+    x: 4.0
+    y: -3.66
+    yaw: -2.287
+  straight_dist: 8.702
+  meta:
+    target: boulder_6
+    min_straight_rock_dist_m: 0.0
+    max_corridor_slope_deg: 8.77
+- id: sand_01
+  group: sand
+  start:
+    x: -19.29
+    y: 14.07
+    yaw: -1.32
+  goal:
+    x: -16.98
+    y: 5.06
+    yaw: -1.32
+  straight_dist: 9.296
+  meta:
+    sand_patch: sand_0
+    sand_crossing_m: 4.1
+    max_corridor_slope_deg: 7.51
+- id: sand_02
+  group: sand
+  start:
+    x: 19.44
+    y: -5.31
+    yaw: -2.165
+  goal:
+    x: 13.59
+    y: -13.97
+    yaw: -2.165
+  straight_dist: 10.456
+  meta:
+    sand_patch: sand_2
+    sand_crossing_m: 4.9
+    max_corridor_slope_deg: 9.79
+- id: sand_03
+  group: sand
+  start:
+    x: -22.0
+    y: 12.97
+    yaw: -0.4
+  goal:
+    x: -14.1
+    y: 9.63
+    yaw: -0.4
+  straight_dist: 8.58
+  meta:
+    sand_patch: sand_0
+    sand_crossing_m: 4.4
+    max_corridor_slope_deg: 6.52
+- id: sand_04
+  group: sand
+  start:
+    x: 21.4
+    y: -8.09
+    yaw: -2.67
+  goal:
+    x: 12.5
+    y: -12.63
+    yaw: -2.67
+  straight_dist: 9.995
+  meta:
+    sand_patch: sand_2
+    sand_crossing_m: 4.5
+    max_corridor_slope_deg: 9.79
+- id: sand_05
+  group: sand
+  start:
+    x: -10.54
+    y: -19.3
+    yaw: 2.912
+  goal:
+    x: -19.97
+    y: -17.1
+    yaw: 2.912
+  straight_dist: 9.683
+  meta:
+    sand_patch: sand_1
+    sand_crossing_m: 4.1
+    max_corridor_slope_deg: 9.91

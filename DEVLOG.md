@@ -478,3 +478,10 @@ This was the longest debugging session of Phase 1. The method matters as much as
 - **MPPI** is the least robust: it already misses `slope_04` and `rocks_01` at L0 (4–5 m downhill slide), and at L3 it slides 10.8 m on `slope_04` and hits a rock (footprint clearance −0.06 m). The only two real collisions are MPPI (L2 `rocks_01` s1, −0.09 m, Nav2 FAILURE; L3 `slope_04` s1).
 - **Full matrix estimate:** 6 combos × 4 levels × 20 scenarios × 2 seeds = 960 runs ≈ 10.9 h at 40.7 s/run. Not run.
 - **Watch:** 4 scenarios × 2 seeds × 1 physics draw per level is small; DWB's 6/8 at L2 and L3 is the same two `slope_04` runs. Next steps that would move these numbers: slip-aware odometry or a global pose source (visual odometry / orbital map matching), and more physics seeds per level.
+
+## 2026-11-25 · Phase 8 · Docker image + CI that tests inside it
+
+- **Decision:** one `Dockerfile` (`osrf/ros:jazzy-desktop` + the apt set of `tools/setup_wsl.sh` + the pinned venv + `./build.sh`) is the single source of dependencies. `.github/workflows/ci.yml` builds that image and runs `colcon test` (gtest, `mars_yard_metrics`) and `pytest tools/tests` inside it on every push to `main` and on PRs. One README per package under `src/`.
+- **Alternatives:** a CI job that installs packages itself on `ros:jazzy` (faster, but then the Dockerfile is untested and the two lists drift); running the headless simulation checks in CI (`check_nav.sh` needs ~2 min of real-time sim per run and a quiet machine; flaky on shared runners).
+- **Why:** Docker is not installed in this WSL, so CI is the only place the Dockerfile gets built; testing inside the image proves both at once.
+- **Watch:** the simulation checks (`tools/check_*.sh`) are not covered by CI and have not been run inside the container. The image is large (desktop base, ~3 GB).

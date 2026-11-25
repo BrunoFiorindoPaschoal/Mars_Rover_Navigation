@@ -40,7 +40,7 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 | 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
 | 7 | Benchmark runner + analysis | In-sim reset, evaluation protocol, failure modes | **done**, see Part 7 |
 | 7b | Domain randomization + robustness study | Which controller survives a wrong model, and why | **done**, see Part 8 |
-| 8 | Docker + CI | Reproducibility | planned (Phase 8) |
+| 8 | Docker + CI | Reproducibility | **done**: `Dockerfile`, `.github/workflows/ci.yml`, one README per package |
 
 Sections for each part are filled in as the code lands.
 

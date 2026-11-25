@@ -6,12 +6,19 @@ A skid-steer rover on HiRISE Jezero crater terrain, simulated in MuJoCo and driv
 
 ![Rover driving open-loop on a 50 m HiRISE Jezero patch (MuJoCo offscreen render)](media/tier_a.gif)
 
-*Current state (Phase 2): a fixed open-loop drive on the real terrain, with no ROS or navigation yet. Render it with `MUJOCO_GL=egl .venv/bin/python tools/render_tier_a.py`.*
+*This GIF is the Phase 2 open-loop drive (`MUJOCO_GL=egl .venv/bin/python tools/render_tier_a.py`). The repo now has the full ROS 2 / Nav2 stack, a benchmark and a robustness study; see below. Each package has its own README under `src/`.*
 
 ## Setup (WSL2, Ubuntu 24.04)
 
 ```bash
 ./tools/setup_wsl.sh
+```
+
+Or with Docker (same dependencies; CI builds this image and runs the gtest + pytest suites inside it on every push; the simulation checks are not run in CI):
+
+```bash
+docker build -t mars-yard .
+docker run --rm -it mars-yard     # shell with the workspace built and sourced
 ```
 
 Launch the ROS 2 + MuJoCo simulation (`world:=flat` or `world:=mars`):

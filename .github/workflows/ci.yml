@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # The Dockerfile is the single source of dependencies, so CI builds it and tests inside it.
+      - name: Build image (installs deps + colcon build)
+        run: docker build -t mars-yard .
+      - name: colcon test (gtest)
+        run: |
+          docker run --rm mars-yard bash -c "source /opt/ros/jazzy/setup.bash && \
+            colcon test --merge-install --packages-select mars_yard_metrics --event-handlers console_direct+ && \
+            colcon test-result --verbose --test-result-base build/mars_yard_metrics"
+      - name: pytest (tools/tests)
+        run: |
+          docker run --rm mars-yard bash -c "source /opt/ros/jazzy/setup.bash && source install/setup.bash && \
+            .venv/bin/python -m pytest tools/tests -q"

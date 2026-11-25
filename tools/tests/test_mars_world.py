@@ -2,6 +2,7 @@
 If the heightfield were flipped, Nav2 would plan around hills that are somewhere else.
 Also checks that the 10x10 collision tiles match the visual full field (including on seams)
 and that no wheel starts below the ground at spawn."""
+import json
 import pathlib
 import sys
 
@@ -162,3 +163,50 @@ def test_no_wheel_below_ground_at_spawn(sim):
                 f"initial wheel penetration at spawn: "
                 f"{model.geom(c.geom1).name} <-> {model.geom(c.geom2).name} dist={c.dist*1000:.2f} mm"
             )
+
+
+def test_boulders_present_rayhit_and_preserve_existing_obstacles(sim):
+    """Boulders are 0.30-0.50 m exposed, ray-hit, >=2 near spawn, and original 40 rocks + 3 sand are unchanged."""
+    model, data = sim
+    obs = json.loads((mw.TERRAIN / "obstacles.json").read_text())
+    t = mw.Terrain()
+
+    # Original 40 rocks and 3 sand patches must keep their exact seeded positions.
+    rng = np.random.default_rng(obs["seed"])
+    expected_rocks = mw.place_rocks(t, rng, 40)
+    expected_sand = mw.place_sand(t, rng, 3)
+    assert obs["rocks"][:40] == expected_rocks
+    assert obs["sand"] == expected_sand
+
+    boulders = [r for r in obs["rocks"] if r.get("kind") == "boulder"]
+    assert len(boulders) == 8
+
+    near_count = 0
+    geomid = np.zeros(1, np.int32)
+    z0 = mw.spawn_ground_height(t)
+    for idx, b in enumerate(boulders):
+        dist_spawn = float(np.hypot(b["x"], b["y"]))
+        assert dist_spawn >= mw.SPAWN_CLEAR
+        if 3.0 <= dist_spawn <= 10.0:
+            near_count += 1
+        assert t.slope[t.index(b["x"], b["y"])] >= 200
+        exposed = 0.7 * b["size"][2]
+        assert 0.299 <= exposed <= 0.501, f"boulder_{idx} exposed height {exposed:.3f} m out of [0.30, 0.50]"
+
+        gid = model.geom(b["name"]).id
+        assert int(model.geom_group[gid]) in (0, 1, 3)
+        mat_id = int(model.geom_matid[gid])
+        alpha = float(model.mat_rgba[mat_id, 3]) if mat_id >= 0 else float(model.geom_rgba[gid, 3])
+        assert alpha > 0.0
+
+        # Downward ray at boulder centre must hit the boulder geom.
+        ray_d = mujoco.mj_ray(
+            model, data, np.array([b["x"], b["y"], 50.0]), np.array([0.0, 0.0, -1.0]),
+            COLLISION_GROUPS, 1, -1, geomid,
+        )
+        assert ray_d > 0 and geomid[0] == gid, f"downward ray missed {b['name']}"
+        hit_z = 50.0 - ray_d
+        expected_top = (b["z"] - z0) + b["size"][2]
+        assert hit_z == pytest.approx(expected_top, abs=0.01)
+
+    assert near_count >= 2, f"expected >=2 boulders within 3-10 m of spawn, got {near_count}"

@@ -33,7 +33,8 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 |---|------|----------------|--------|
 | 1 | ros2_control + mujoco_ros2_control | The integration the project exists for | **done**, see Part 1 |
 | 2 | tf2 tree + EKF | Every node depends on correct frames | **done**, see Part 2 |
-| 3 | Nav2 config: costmaps, planners, controllers | The DLR role | planned (Phase 5) |
+| 3a | 3D lidar + step-height hazard detection | Local rock/boulder perception on slopes | **done**, see Part 3a |
+| 3b | Nav2 config: costmaps, planners, controllers | The DLR role | planned (Phase 5b) |
 | 4 | Rover MJCF/URDF + contact physics | Explains slip and jitter, and every number in the model | **done**, see Part 4 |
 | 5 | Terrain pipeline (DEM -> hfield + slope map) | Planning on orbital data | **done**, see Part 5 |
 | 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
@@ -108,6 +109,45 @@ Sections for each part are filled in as the code lands.
 **Experiments:**
 - `ros2 run tf2_tools view_frames` and compare with `results/tf_frames.pdf`.
 - `ros2 run tf2_ros tf2_echo odom base_link` while driving, compared with the ground-truth topic: that difference is the drift Phase 4 measures.
+
+---
+
+## Part 3a · 3D lidar + step-height hazard detection: finding rocks on slopes  *(Phase 5a, done)*
+
+**Where it sits:** between the simulator's 3D lidar and Nav2's local obstacle costmap. A 2D horizontal lidar at `0.57 m` passes straight over rocks (`0.04–0.50 m` exposed) and hits uphill slopes, so it cannot separate a drivable slope from a rock. Phase 5a casts a downward-concentrated 3D ray fan, levels each scan with IMU roll/pitch, measures local step height against a robust local ground plane, and publishes `/hazards` (`PointCloud2` in `odom`: hazards at `z = 0.3`, observed free cells at `z = 0.0`) plus `/hazard_grid` (`OccupancyGrid`) for RViz.
+
+**The pipeline, one 5 Hz 3D scan:**
+1. `RayScanPlugin` (`ray_cloud_plugin`) casts `28 × 91 = 2,548` rays (`[-90°, +90°]` azimuth, `[-30°, +2°]` elevation) in ONE `mj_multiRay` call (~`15.3 ms` on `mars`) and publishes hits-only float32 `(x, y, z)` on `/points` in `lidar_link`.
+2. `hazard_mapper.py` matches the scan timestamp to the nearest IMU sample and transforms `lidar_link → base_link` (static tf) → gravity-leveled frame (`Ry(pitch) @ Rx(roll)`, discarding IMU yaw) → `odom` (`(x, y, yaw)` from the 2D EKF tf).
+3. `detect_hazards_scan()` bins points into `0.10 m` cells, keeping exact `(x, y, z)` of each cell's lowest and highest point, and fits a 2-pass vectorized integral-image local plane over a `±0.70 m` (`1.5 m × 1.5 m`) window. Pass 1 rejects elevated rock points (`res > 0.06 m`); Pass 2 refits the ground plane and computes `step_height` at the cell's exact `(x_max, y_max)`.
+4. `RollingHazardMap` updates discrete labels (`-1 / 0 / 100`) and hysteresis scores in a `24 m × 24 m` rolling `odom` grid (`memory_ttl = 30 s`)—never accumulating raw `z` across scans—and publishes `/hazards` and `/hazard_grid`.
+
+**Read, in this order:**
+1. `src/mars_yard_sim_plugins/include/mars_yard_sim_plugins/ray_scan_plugin.hpp` and `src/mars_yard_sim_plugins/src/ray_scan_plugin.cpp`: how one plugin class serves both the 1-ring `/scan` and the 28-ring `/points` instances using one `mj_multiRay` call and `realtime_tools::RealtimePublisher`.
+2. `src/mars_yard_bringup/config/mujoco_plugins.yaml`: the two plugin instances and why the 3D lidar uses a forward-only `180°` azimuth sector with `28` downward-concentrated rings.
+3. `src/mars_yard_nav/mars_yard_nav/hazard_core.py`: the pure-NumPy math (`level_rotation`, `transform_points_to_odom`, `_box_sum_2d`, `_fit_local_plane`, `detect_hazards_scan`, `RollingHazardMap`).
+4. `src/mars_yard_nav/scripts/hazard_mapper.py` and `src/mars_yard_nav/config/hazard_mapper.yaml`: the thin ROS 2 wrapper (fast NumPy `PointCloud2` parsing/packing, IMU ring buffer, TF lookups).
+5. `tools/tests/test_hazard_core.py` and `tools/check_hazards.sh`: offline slope/bump/levelling tests and headless end-to-end verification against `obstacles.json`.
+6. `tools/make_mars_world.py` (`place_boulders()`): how 8 larger boulders (`0.30–0.50 m` exposed) are added from a separate RNG stream without moving any of the 40 existing rocks or 3 sand patches.
+
+**Concepts to know:**
+- **Why step height (not raw height) for planetary rovers:** on a 15° smooth slope, elevation changes by `0.27 m` per metre, so a fixed `z` threshold (`min_obstacle_height`) flags the entire uphill slope as an obstacle. Perseverance ENav and Nav2 terrain-costmap discussions (navigation2 #4325) instead measure *local roughness / step height* relative to the local ground plane and compare it against the rover's wheel radius (`0.12 m`).
+- **2D EKF vs 3D perception:** `two_d_mode: true` zeroes `z`, `roll`, and `pitch` in `odom → base_link`. You must level 3D sensor data with IMU roll/pitch yourself, discard IMU yaw (no Mars compass), and never fuse raw `z` across scans at different elevations—only persist hazard/free *labels* in `odom`.
+- **Two-pass robust plane fitting & integral images:** a 2D least-squares plane depends only on 9 windowed sums (`N, Sx, Sy, Sz, Sxx, Sxy, Syy, Sxz, Syz`), computable over every grid cell in `< 1 ms` via 2D prefix sums (`cumsum`). Refitting after trimming Pass-1 positive outliers prevents a large boulder from tilting the fitted ground plane upward. Checking the smaller 2D covariance eigenvalue (`λ_min >= 0.015 m²`) rejects ill-conditioned single-ring arcs at far range.
+- **Exact-point evaluation vs cell centres:** evaluating the fitted plane at the cell's actual `(x_max, y_max)` instead of the cell centre removes `cell_size * tan(slope)` discretization error, making the residual identically `0` on any smooth tilted plane.
+- **Nav2 obstacle-layer contract (`/hazards`):** publishing hazard cells at `z = 0.3` and observed free cells at `z = 0.0` lets a standard Nav2 `ObstacleLayer` (`min_obstacle_height: 0.1`, `clearing: true`) mark rocks and raytrace-clear free ground without a custom C++ costmap plugin.
+- **Docs:** [sensor_msgs/PointCloud2](https://docs.ros2.org/jazzy/api/sensor_msgs/msg/PointCloud2.html), [nav_msgs/OccupancyGrid](https://docs.ros2.org/jazzy/api/nav_msgs/msg/OccupancyGrid.html), [Nav2 ObstacleLayer](https://docs.nav2.org/configuration/packages/costmap-plugins/obstacle.html), [Navigation2 #4325 (rough terrain)](https://github.com/ros-navigation/navigation2/issues/4325), [MuJoCo `mj_multiRay`](https://mujoco.readthedocs.io/en/stable/APIreference/APIfunctions.html#mj-multiray)
+
+**Self-check questions:**
+1. Why did a 360° downward-tilted lidar hit the rover's own chassis even though `RayScanPlugin` passes `body_exclude_ = lidar_link` to `mj_multiRay`?
+2. What would happen to `/hazard_grid` on Mars if `hazard_mapper.py` used `odom → lidar_link` directly from tf2 instead of applying IMU roll/pitch?
+3. Why does `detect_hazards_scan()` evaluate `z_plane` at `(x_max, y_max)` rather than the cell centre, and why does it run a second pass after excluding `res1_min > 0.06 m`?
+4. Why does `RollingHazardMap` store discrete `-1 / 0 / 100` labels in `odom` instead of averaging raw `z` elevations over 30 seconds?
+
+**Experiments:**
+- Run `./tools/check_hazards.sh flat` and `./tools/check_hazards.sh mars`, then launch `ros2 launch mars_yard_bringup sim.launch.py world:=mars` and drive around `boulder_0` while watching `/points` and `/hazard_grid` in RViz2.
+- In `src/mars_yard_nav/config/hazard_mapper.yaml`, lower `step_threshold` to `0.05` and rerun `./tools/check_hazards.sh mars`: watch `rock_13` (`0.059 m` exposed) and small terrain undulations start triggering hazards.
+- In `tools/tests/test_hazard_core.py`, replace `(x_max, y_max)` plane evaluation in `hazard_core.py` with cell centres on a `25°` slope and observe the discretization bias appear.
 
 ## Part 4 · Rover model: MJCF physics + URDF frames  *(Phase 1, done)*
 

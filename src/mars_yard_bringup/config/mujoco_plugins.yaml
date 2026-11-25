@@ -1,11 +1,13 @@
 /**:
   ros__parameters:
     mujoco_plugins:
+      # 2D horizontal 360-deg scan (kept unchanged for /scan consumers and 2D SLAM/Nav2 compatibility).
       ray_scan_plugin:
         type: "mars_yard_sim_plugins/RayScanPlugin"
         site: "lidar"
         frame_name: "lidar_link"
         topic: "/scan"
+        num_rings: 1
         num_rays: 360
         # 360 rays stepping 1 deg CCW about site +z from -pi to pi - 1 deg
         # (ray 180 = +x forward, ray 270 = +y left).
@@ -15,4 +17,25 @@
         range_max: 10.0
         publish_rate: 10.0
         # Include groups 0, 1, and 3 (collision terrain tiles); exclude group 2 (visual full field & rover visuals).
+        geomgroups: [1, 1, 0, 1, 0, 0]
+
+      # 3D downward-concentrated forward-sector lidar for step-height hazard detection.
+      # 28 rings x 91 rays = 2,548 rays over [-90, +90] deg azimuth (2.0 deg step) and
+      # [-30, +2] deg elevation (1.19 deg step) at 5 Hz: detects a 0.15 m rock (ellipsoid or box)
+      # across 1-4 m ahead with zero chassis self-hits while keeping Mars physics RTF = 1.00.
+      ray_cloud_plugin:
+        type: "mars_yard_sim_plugins/RayScanPlugin"
+        site: "lidar"
+        frame_name: "lidar_link"
+        topic: ""
+        cloud_topic: "/points"
+        num_rings: 28
+        num_rays: 91
+        min_angle: -1.5707963267948966
+        max_angle: 1.5707963267948966
+        min_elevation: -0.5235987755982988
+        max_elevation: 0.03490658503988659
+        range_min: 0.25
+        range_max: 8.0
+        publish_rate: 5.0
         geomgroups: [1, 1, 0, 1, 0, 0]

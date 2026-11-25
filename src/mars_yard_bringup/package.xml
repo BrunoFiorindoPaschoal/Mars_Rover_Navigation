@@ -18,6 +18,7 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>mars_yard_description</exec_depend>
   <exec_depend>mars_yard_metrics</exec_depend>
+  <exec_depend>mars_yard_nav</exec_depend>
   <exec_depend>mars_yard_sim_plugins</exec_depend>
   <exec_depend>mars_yard_worlds</exec_depend>
   <exec_depend>mujoco_ros2_control</exec_depend>

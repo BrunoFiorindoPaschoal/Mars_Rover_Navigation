@@ -1,5 +1,6 @@
 {
   "seed": 7,
+  "boulder_seed": 10007,
   "ground_offset_m": -2.3223,
   "rocks": [
     {
@@ -441,6 +442,118 @@
         0.076
       ],
       "yaw": 0.942
+    },
+    {
+      "name": "boulder_0",
+      "kind": "boulder",
+      "x": 5.588,
+      "y": -0.693,
+      "z": 1.743,
+      "size": [
+        0.611,
+        0.48,
+        0.664
+      ],
+      "yaw": 2.376,
+      "exposed_height": 0.465
+    },
+    {
+      "name": "boulder_1",
+      "kind": "boulder",
+      "x": 6.278,
+      "y": -6.091,
+      "z": 1.7342,
+      "size": [
+        0.447,
+        0.391,
+        0.492
+      ],
+      "yaw": 0.183,
+      "exposed_height": 0.344
+    },
+    {
+      "name": "boulder_2",
+      "kind": "boulder",
+      "x": -14.039,
+      "y": 22.052,
+      "z": 2.6767,
+      "size": [
+        0.617,
+        0.476,
+        0.569
+      ],
+      "yaw": 0.068,
+      "exposed_height": 0.398
+    },
+    {
+      "name": "boulder_3",
+      "kind": "boulder",
+      "x": -11.516,
+      "y": 15.457,
+      "z": 2.6356,
+      "size": [
+        0.713,
+        0.563,
+        0.623
+      ],
+      "yaw": 1.197,
+      "exposed_height": 0.436
+    },
+    {
+      "name": "boulder_4",
+      "kind": "boulder",
+      "x": -22.416,
+      "y": -4.415,
+      "z": 5.2657,
+      "size": [
+        0.51,
+        0.367,
+        0.511
+      ],
+      "yaw": 1.608,
+      "exposed_height": 0.358
+    },
+    {
+      "name": "boulder_5",
+      "kind": "boulder",
+      "x": -12.479,
+      "y": 3.613,
+      "z": 3.1394,
+      "size": [
+        0.653,
+        0.596,
+        0.647
+      ],
+      "yaw": 0.141,
+      "exposed_height": 0.453
+    },
+    {
+      "name": "boulder_6",
+      "kind": "boulder",
+      "x": 7.367,
+      "y": -0.345,
+      "z": 1.5625,
+      "size": [
+        0.533,
+        0.491,
+        0.503
+      ],
+      "yaw": 2.515,
+      "exposed_height": 0.352
+    },
+    {
+      "name": "boulder_7",
+      "kind": "boulder",
+      "x": -12.39,
+      "y": 7.097,
+      "z": 2.9427,
+      "size": [
+        0.583,
+        0.473,
+        0.602
+      ],
+      "yaw": 1.325,
+      "exposed_height": 0.421
     }
   ],
   "sand": [

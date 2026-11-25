@@ -23,16 +23,19 @@ def _launch_setup(context, *args, **kwargs):
     use_rviz = _as_bool(LaunchConfiguration("rviz").perform(context))
     use_ekf = _as_bool(LaunchConfiguration("use_ekf").perform(context))
     use_metrics = _as_bool(LaunchConfiguration("metrics").perform(context))
+    use_hazards = _as_bool(LaunchConfiguration("hazards").perform(context))
 
     bringup_share = get_package_share_directory("mars_yard_bringup")
     description_share = get_package_share_directory("mars_yard_description")
     worlds_share = get_package_share_directory("mars_yard_worlds")
+    nav_share = get_package_share_directory("mars_yard_nav")
 
     urdf_path = os.path.join(description_share, "urdf", "rover.urdf.xacro")
     mujoco_model_path = os.path.join(worlds_share, "worlds", f"{world}.xml")
     controllers_yaml = os.path.join(bringup_share, "config", "controllers.yaml")
     mujoco_plugins_yaml = os.path.join(bringup_share, "config", "mujoco_plugins.yaml")
     ekf_yaml = os.path.join(bringup_share, "config", "ekf.yaml")
+    hazard_mapper_yaml = os.path.join(nav_share, "config", "hazard_mapper.yaml")
     rviz_config = os.path.join(bringup_share, "rviz", "sim.rviz")
 
     robot_description_str = Command(
@@ -143,6 +146,17 @@ def _launch_setup(context, *args, **kwargs):
             )
         )
 
+    if use_hazards:
+        nodes.append(
+            Node(
+                package="mars_yard_nav",
+                executable="hazard_mapper.py",
+                name="hazard_mapper",
+                output="both",
+                parameters=[hazard_mapper_yaml, {"use_sim_time": True}],
+            )
+        )
+
     if use_rviz:
         nodes.append(
             Node(
@@ -185,6 +199,11 @@ def generate_launch_description():
                 "metrics",
                 default_value="true",
                 description="Launch mars_yard_metrics metrics_node for ground-truth and navigation metrics.",
+            ),
+            DeclareLaunchArgument(
+                "hazards",
+                default_value="true",
+                description="Launch mars_yard_nav hazard_mapper for 3D step-height hazard detection.",
             ),
             # Placeholders reserved for later navigation and domain-randomization phases
             DeclareLaunchArgument(

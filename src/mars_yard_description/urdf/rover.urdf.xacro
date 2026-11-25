@@ -124,7 +124,7 @@
         <param name="odom_free_joint_name">base_free_joint</param>
       </hardware>
 
-      <!-- 4 driven wheels: velocity command + position/velocity state -->
+      <!-- 4 driven wheels: velocity command + position/velocity/effort state -->
       <xacro:macro name="wheel_ros2_control" params="name">
         <joint name="wheel_${name}_joint">
           <command_interface name="velocity"/>
@@ -134,6 +134,7 @@
           <state_interface name="velocity">
             <param name="initial_value">0.0</param>
           </state_interface>
+          <state_interface name="effort"/>
         </joint>
       </xacro:macro>
 

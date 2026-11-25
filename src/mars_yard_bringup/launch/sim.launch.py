@@ -22,6 +22,7 @@ def _launch_setup(context, *args, **kwargs):
     headless = LaunchConfiguration("headless").perform(context)
     use_rviz = _as_bool(LaunchConfiguration("rviz").perform(context))
     use_ekf = _as_bool(LaunchConfiguration("use_ekf").perform(context))
+    use_metrics = _as_bool(LaunchConfiguration("metrics").perform(context))
 
     bringup_share = get_package_share_directory("mars_yard_bringup")
     description_share = get_package_share_directory("mars_yard_description")
@@ -131,6 +132,17 @@ def _launch_setup(context, *args, **kwargs):
             )
         )
 
+    if use_metrics:
+        nodes.append(
+            Node(
+                package="mars_yard_metrics",
+                executable="metrics_node",
+                name="metrics_node",
+                output="both",
+                parameters=[{"use_sim_time": True}],
+            )
+        )
+
     if use_rviz:
         nodes.append(
             Node(
@@ -168,6 +180,11 @@ def generate_launch_description():
                 "use_ekf",
                 default_value="true",
                 description="Launch robot_localization ekf_node for odom -> base_link fusion.",
+            ),
+            DeclareLaunchArgument(
+                "metrics",
+                default_value="true",
+                description="Launch mars_yard_metrics metrics_node for ground-truth and navigation metrics.",
             ),
             # Placeholders reserved for later navigation and domain-randomization phases
             DeclareLaunchArgument(

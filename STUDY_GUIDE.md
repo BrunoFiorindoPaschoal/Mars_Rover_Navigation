@@ -36,7 +36,7 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 | 3 | Nav2 config: costmaps, planners, controllers | The DLR role | planned (Phase 5) |
 | 4 | Rover MJCF/URDF + contact physics | Explains slip and jitter, and every number in the model | **done**, see Part 4 |
 | 5 | Terrain pipeline (DEM -> hfield + slope map) | Planning on orbital data | **done**, see Part 5 |
-| 6 | C++ metrics node | rclcpp, CMake, tf2 lookups | planned (Phase 4) |
+| 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
 | 7 | Benchmark runner + analysis | Evaluation protocol | planned (Phase 6) |
 | 8 | Docker + CI | Reproducibility | planned (Phase 8) |
 
@@ -178,3 +178,36 @@ Sections for each part are filled in as the code lands.
 **Experiments:**
 - Run `dem_to_world.py` with `--lethal-slope 15`, then regenerate the world, and compare `results/terrain_preview.png`.
 - In `test_mars_world.py`, flip y in the lookup and watch the test fail. That is the bug it guards against.
+
+---
+
+## Part 6 · C++ metrics node: ground truth, drift, slip, and energy  *(Phase 4, done)*
+
+**Where it sits:** beside the navigation stack, watching only ROS topics. It never touches MuJoCo directly and never publishes TF. It turns `/simulator/floating_base_state`, `/odometry/filtered`, `/diff_drive_controller/odom`, `/joint_states`, and `/plan` into a standard `/ground_truth/odom` plus ten `/metrics/*` scalar streams for live plotting and Phase 6 benchmarking.
+
+**Read, in this order:**
+1. `src/mars_yard_metrics/include/mars_yard_metrics/metrics_core.hpp` and `src/mars_yard_metrics/src/metrics_core.cpp`: all the math (`Pose2D`, `wrap_angle`, `rotate_world_to_body`, `relative_pose`, `drift`, `cross_track_error`, `SlipAccumulator`, `EnergyAccumulator`), with zero ROS headers.
+2. `src/mars_yard_metrics/test/test_metrics_core.cpp`: GoogleTest (`ament_cmake_gtest`) unit tests covering `±π` wrap, quaternion rotations, polyline endpoints, empty paths, reverse driving, in-place turns, and negative torques.
+3. `src/mars_yard_metrics/src/metrics_node.cpp`: the thin `rclcpp::Node` wrapper—subscriptions, origin `T0` capture, `/ground_truth/odom` twist conversion, and the 10 Hz sim-time publisher timer.
+4. `src/mars_yard_metrics/CMakeLists.txt` and `package.xml`: how `ament_cmake` builds a static library (`metrics_core`), links it into both `metrics_node` and `test_metrics_core`, and registers the test target.
+5. `tools/check_metrics.sh`: headless end-to-end check that publishes a straight `/plan`, drives forward then turns, and prints every metric and energy breakdown.
+
+**Concepts to know:**
+- **Pure core + thin ROS shell:** putting every formula in a ROS-free library (`metrics_core`) means unit tests compile and run in milliseconds without launching DDS or a simulator. `metrics_node.cpp` only translates ROS messages into plain structs and manages timers.
+- **Sim-time timers in `rclcpp`:** `create_wall_timer` ticks on wall-clock time; `rclcpp::create_timer(this, this->get_clock(), period, cb)` ticks on `/clock` when `use_sim_time: true`, so metrics stay aligned with physics even if RTF < 1.
+- **REP 105 twist frames vs MuJoCo free joints:** `nav_msgs/Odometry` puts `pose` in `header.frame_id` (`map`) and `twist` (both linear and angular) in `child_frame_id` (`base_link`). `MujocoSystemInterface` 0.1.4 copies MuJoCo's free-joint `qvel` verbatim: `qvel[0..2]` is world-frame linear velocity (must be rotated by `q⁻¹`), while `qvel[3..5]` is already body-local angular velocity (must *not* be rotated again).
+- **Metric definitions and their limits:**
+  - *Drift (`ekf_*_drift`, `wheel_*_drift`):* captures the first paired GT pose as `T0`, expresses GT in `T0`'s planar frame (`GT_rel = relative_pose(T0, GT)`), and compares against EKF/wheel odom. **Limits:** assumes `map == MuJoCo world` and EKF starts at spawn (will need revision when SLAM/AMCL moves `map → odom` in Phase 5); compares latest messages directly, so EKF's ~12 ms pipeline lag slightly shifts live position drift while moving (~5 mm at 0.4 m/s).
+  - *Slip (`slip_ratio`, `slip_instant`, `lateral_slide`):* `v_wheel = r · mean(ω_i)` vs body-frame `v_true_x`. Longitudinal distances only accumulate when `|v_wheel| > 0.02 m/s` so in-place turns don't divide by zero, while `lateral_slide = ∑|v_true_y|dt` always accumulates so downhill sliding during turns is visible (`0.51 m` on Mars vs `0.18 m` on flat). **Limit:** if asymmetric wheel speeds briefly push `|v_wheel| > 0.02 m/s` while sliding downhill faster than the wheels roll, `slip_ratio` can go negative.
+  - *Cross-track error (`cross_track_error`):* minimum Euclidean distance from `GT_rel (x, y)` to all segments of `/plan` (`NaN` until a plan arrives). **Limit:** planar 2D distance to the closest segment, not progress-indexed along the path (on self-crossing paths it picks the nearest branch).
+  - *Energy (`energy`):* integrates mechanical work magnitude `∑ |τ_i · ω_i| dt` from `/joint_states` wheel `effort` (`qfrc_actuator`) and `velocity`. **Limit:** captures mechanical shaft work without regenerative credit (so straight driving costs ~`7–8 J/m` while a 10 s skid-steer turn burns ~`440 J`), and omits motor copper losses (`I²R`) and avionics idle power.
+- Docs: [rclcpp API](https://docs.ros.org/en/jazzy/p/rclcpp/), [ament_cmake user guide](https://docs.ros.org/en/jazzy/How-To-Guides/Ament-CMake-Documentation.html), [GoogleTest primer](https://google.github.io/googletest/primer.html), [REP 105](https://www.ros.org/reps/rep-0105.html)
+
+**Self-check questions:**
+1. Why does `metrics_node` rotate `floating_base_state.twist.twist.linear` by `q⁻¹` but leave `twist.twist.angular` untouched? What would go wrong on a 15° slope if you rotated both?
+2. Why does `SlipAccumulator` gate longitudinal distance on `|v_wheel| > 0.02 m/s` yet still integrate `lateral_slide` below that threshold?
+3. Why did `mars` straight driving use slightly *less* energy per metre (`6.6 J/m`) than `flat` (`7.6 J/m`), while a 10 s in-place turn burned more than 14× as much energy as driving 4 m straight?
+
+**Experiments:**
+- Run `colcon test --merge-install --packages-select mars_yard_metrics` and break `wrap_angle` (e.g., return `angle` unchanged); inspect `colcon test-result --verbose` to see which gtest cases fail.
+- Run `./tools/check_metrics.sh flat` and `./tools/check_metrics.sh mars`, then compare `lateral_slide`, `ekf_pos_drift`, and the forward vs turn energy breakdown between the two worlds.

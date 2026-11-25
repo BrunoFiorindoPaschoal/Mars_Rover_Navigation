@@ -369,3 +369,10 @@ This was the longest debugging session of Phase 1. The method matters as much as
 - **Watch:**
   - *Single-seed sensitivity:* as seen on `smac_hybrid + rpp`, contact-driven slope slip creates run-to-run variance on borderline controller/planner pairings; Phase 6 must benchmark multi-seed success rates rather than single trials.
   - *`smac_hybrid + dwb` vs `navfn + dwb` trade-off:* `smac_hybrid + dwb` achieves lower GT error (`0.22 m` vs `0.36 m`), drift (`0.33 m` vs `0.43 m`), lateral slide (`0.25 m` vs `0.31 m`), and energy (`449 J` vs `454 J`), while `navfn + dwb` keeps wider boulder clearance (`0.87 m` vs `0.61 m`). Both clear all boulders safely (`>= 0.42 m` collision threshold).
+
+## 2026-11-25 · Phase 5 · Fix: goals aborted mid-drive under RViz load
+
+- **Decision:** raise `bt_navigator.default_server_timeout` from `20` to `1000` ms in `src/mars_yard_nav/config/nav2_base.yaml`.
+- **Alternatives:** lower planner replanning rate or drop RViz displays (treats the symptom; any CPU spike can still abort a goal).
+- **Why:** in an interactive session with RViz (3D `/points`, both costmaps) 9 of ~20 goals stopped mid-drive. `~/.ros/log/bt_navigator_*.log` showed every one as `Timed out while waiting for action server to acknowledge goal request for compute_path_to_pose|follow_path` -> `Goal failed`; the planner itself missed its rate only once. 20 ms is the time the BT waits for the action server to *acknowledge* a request (the 1 Hz replan or the controller hand-off), not planning time, so it only fails when the machine is busy. A 1 s acknowledge window does not slow normal operation.
+- **Watch:** the headless `tools/check_nav.sh` never hit this (no RViz load), so it is only verified by rerunning interactively.

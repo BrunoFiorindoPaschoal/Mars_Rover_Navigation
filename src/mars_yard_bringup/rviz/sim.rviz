@@ -8,7 +8,7 @@ Panels:
         - /TF1
         - /LaserScan1
       Splitter Ratio: 0.5
-    Tree Height: 400
+    Tree Height: 439
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -28,7 +28,7 @@ Visualization Manager:
       Color: 160; 160; 164
       Enabled: true
       Line Style:
-        Line Width: 0.03
+        Line Width: 0.029999999329447746
         Value: Lines
       Name: Grid
       Normal Cell Count: 0
@@ -58,6 +58,44 @@ Visualization Manager:
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        front_axle_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        imu_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        lidar_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_fl_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_fr_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_rl_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        wheel_rr_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Mass Properties:
         Inertia: false
         Mass: false
@@ -68,14 +106,53 @@ Visualization Manager:
       Visual Enabled: true
     - Class: rviz_default_plugins/TF
       Enabled: true
+      Filter (blacklist): ""
+      Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
         All Enabled: true
-      Marker Scale: 0.4
+        base_link:
+          Value: true
+        front_axle_link:
+          Value: true
+        imu_link:
+          Value: true
+        lidar_link:
+          Value: true
+        map:
+          Value: true
+        odom:
+          Value: true
+        wheel_fl_link:
+          Value: true
+        wheel_fr_link:
+          Value: true
+        wheel_rl_link:
+          Value: true
+        wheel_rr_link:
+          Value: true
+      Marker Scale: 0.4000000059604645
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
+      Tree:
+        map:
+          odom:
+            base_link:
+              front_axle_link:
+                wheel_fl_link:
+                  {}
+                wheel_fr_link:
+                  {}
+              imu_link:
+                {}
+              lidar_link:
+                {}
+              wheel_rl_link:
+                {}
+              wheel_rr_link:
+                {}
       Update Interval: 0
       Value: true
     - Alpha: 1
@@ -91,11 +168,16 @@ Visualization Manager:
       Color Transformer: FlatColor
       Decay Time: 0
       Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
       Name: LaserScan
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 4
-      Size (m): 0.05
+      Size (m): 0.05000000074505806
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -105,12 +187,13 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /scan
       Use Fixed Frame: true
+      Use rainbow: true
       Value: true
-    - Alpha: 0.9
+    - Alpha: 0.8999999761581421
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 1
-        Min Value: -1
+        Max Value: 0.059530019760131836
+        Min Value: -0.3985083997249603
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -128,19 +211,20 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.03
+      Size (m): 0.029999999329447746
       Style: Flat Squares
       Topic:
         Depth: 5
         Durability Policy: Volatile
-        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /points
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 0.65
+    - Alpha: 0.6499999761581421
+      Binary representation: false
+      Binary threshold: 100
       Class: rviz_default_plugins/Map
       Color Scheme: costmap
       Draw Behind: false
@@ -156,17 +240,16 @@ Visualization Manager:
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
-        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /hazard_grid_updates
       Use Timestamp: false
       Value: true
-    - Angle Tolerance: 0.1
+    - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
       Covariance:
         Orientation:
-          Alpha: 0.3
+          Alpha: 0.30000001192092896
           Color: 0; 255; 127
           Color Style: Unique
           Frame: Local
@@ -174,7 +257,7 @@ Visualization Manager:
           Scale: 1
           Value: false
         Position:
-          Alpha: 0.3
+          Alpha: 0.30000001192092896
           Color: 0; 255; 127
           Scale: 1
           Value: false
@@ -182,16 +265,16 @@ Visualization Manager:
       Enabled: true
       Keep: 200
       Name: EKF Odometry
-      Position Tolerance: 0.05
+      Position Tolerance: 0.05000000074505806
       Shape:
         Alpha: 1
-        Axes Length: 0.4
-        Axes Radius: 0.03
+        Axes Length: 0.4000000059604645
+        Axes Radius: 0.029999999329447746
         Color: 0; 220; 80
-        Head Length: 0.15
-        Head Radius: 0.07
-        Shaft Length: 0.35
-        Shaft Radius: 0.03
+        Head Length: 0.15000000596046448
+        Head Radius: 0.07000000029802322
+        Shaft Length: 0.3499999940395355
+        Shaft Radius: 0.029999999329447746
         Value: Arrow
       Topic:
         Depth: 5
@@ -201,11 +284,11 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /odometry/filtered
       Value: true
-    - Angle Tolerance: 0.1
+    - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
       Covariance:
         Orientation:
-          Alpha: 0.3
+          Alpha: 0.30000001192092896
           Color: 255; 170; 0
           Color Style: Unique
           Frame: Local
@@ -213,7 +296,7 @@ Visualization Manager:
           Scale: 1
           Value: false
         Position:
-          Alpha: 0.3
+          Alpha: 0.30000001192092896
           Color: 255; 170; 0
           Scale: 1
           Value: false
@@ -221,16 +304,16 @@ Visualization Manager:
       Enabled: true
       Keep: 200
       Name: Wheel Odometry
-      Position Tolerance: 0.05
+      Position Tolerance: 0.05000000074505806
       Shape:
-        Alpha: 0.8
-        Axes Length: 0.4
-        Axes Radius: 0.03
+        Alpha: 0.800000011920929
+        Axes Length: 0.4000000059604645
+        Axes Radius: 0.029999999329447746
         Color: 255; 140; 0
-        Head Length: 0.12
-        Head Radius: 0.06
-        Shaft Length: 0.3
-        Shaft Radius: 0.025
+        Head Length: 0.11999999731779099
+        Head Radius: 0.05999999865889549
+        Shaft Length: 0.30000001192092896
+        Shaft Radius: 0.02500000037252903
         Value: Arrow
       Topic:
         Depth: 5
@@ -240,23 +323,36 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /diff_drive_controller/odom
       Value: true
-    - Angle Tolerance: 0.1
+    - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
       Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
         Value: false
       Enabled: true
       Keep: 200
       Name: Ground Truth Odometry
-      Position Tolerance: 0.05
+      Position Tolerance: 0.05000000074505806
       Shape:
-        Alpha: 0.8
-        Axes Length: 0.4
-        Axes Radius: 0.03
+        Alpha: 0.800000011920929
+        Axes Length: 0.4000000059604645
+        Axes Radius: 0.029999999329447746
         Color: 0; 180; 255
-        Head Length: 0.12
-        Head Radius: 0.06
-        Shaft Length: 0.3
-        Shaft Radius: 0.025
+        Head Length: 0.11999999731779099
+        Head Radius: 0.05999999865889549
+        Shaft Length: 0.30000001192092896
+        Shaft Radius: 0.02500000037252903
         Value: Arrow
       Topic:
         Depth: 5
@@ -266,7 +362,9 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /simulator/floating_base_state
       Value: true
-    - Alpha: 0.7
+    - Alpha: 0.699999988079071
+      Binary representation: false
+      Binary threshold: 100
       Class: rviz_default_plugins/Map
       Color Scheme: map
       Draw Behind: true
@@ -282,13 +380,14 @@ Visualization Manager:
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
-        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /map_updates
       Use Timestamp: false
       Value: true
     - Alpha: 0.5
+      Binary representation: false
+      Binary threshold: 100
       Class: rviz_default_plugins/Map
       Color Scheme: costmap
       Draw Behind: false
@@ -304,13 +403,14 @@ Visualization Manager:
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
-        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /global_costmap/costmap_updates
       Use Timestamp: false
       Value: true
-    - Alpha: 0.6
+    - Alpha: 0.6000000238418579
+      Binary representation: false
+      Binary threshold: 100
       Class: rviz_default_plugins/Map
       Color Scheme: costmap
       Draw Behind: false
@@ -326,7 +426,6 @@ Visualization Manager:
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
-        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /local_costmap/costmap_updates
@@ -337,21 +436,21 @@ Visualization Manager:
       Class: rviz_default_plugins/Path
       Color: 0; 255; 60
       Enabled: true
-      Head Diameter: 0.2
-      Head Length: 0.15
-      Length: 0.2
+      Head Diameter: 0.20000000298023224
+      Head Length: 0.15000000596046448
+      Length: 0.20000000298023224
       Line Style: Lines
-      Line Width: 0.05
+      Line Width: 0.05000000074505806
       Name: Global Plan
       Offset:
         X: 0
         Y: 0
-        Z: 0.05
+        Z: 0.05000000074505806
       Pose Color: 255; 85; 255
       Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.05
-      Shaft Length: 0.1
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.05000000074505806
+      Shaft Length: 0.10000000149011612
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -365,21 +464,21 @@ Visualization Manager:
       Class: rviz_default_plugins/Path
       Color: 255; 220; 0
       Enabled: true
-      Head Diameter: 0.2
-      Head Length: 0.15
-      Length: 0.2
+      Head Diameter: 0.20000000298023224
+      Head Length: 0.15000000596046448
+      Length: 0.20000000298023224
       Line Style: Lines
-      Line Width: 0.05
+      Line Width: 0.05000000074505806
       Name: Local Plan
       Offset:
         X: 0
         Y: 0
-        Z: 0.08
+        Z: 0.07999999821186066
       Pose Color: 255; 85; 255
       Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.05
-      Shaft Length: 0.1
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.05000000074505806
+      Shaft Length: 0.10000000149011612
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -429,29 +528,37 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 8.0
+      Distance: 64.23155212402344
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
       Focal Point:
         X: 0
         Y: 0
         Z: 0
       Focal Shape Fixed Size: true
-      Focal Shape Size: 0.05
+      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
-      Near Clip Distance: 0.01
-      Pitch: 0.65
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.9999998807907104
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 0.8
+      Yaw: 4.8681840896606445
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 850
+  Height: 1119
   Hide Left Dock: false
   Hide Right Dock: true
+  QMainWindow State: 000000ff00000000fd00000001000000000000034800000409fc0200000003fb000000100044006900730070006c006100790073010000003b00000240000000c700fffffffb0000000a00560069006500770073010000028100000172000000a000fffffffb0000000800540069006d006501000003f90000004b0000003700ffffff000004260000040900000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Time:
+    collapsed: false
   Views:
-    collapsed: true
-  Width: 1280
-  X: 60
-  Y: 40
+    collapsed: false
+  Width: 1908
+  X: 0
+  Y: 0

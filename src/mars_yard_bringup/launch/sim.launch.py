@@ -4,7 +4,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, Shutdown
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterFile, ParameterValue
@@ -24,6 +25,9 @@ def _launch_setup(context, *args, **kwargs):
     use_ekf = _as_bool(LaunchConfiguration("use_ekf").perform(context))
     use_metrics = _as_bool(LaunchConfiguration("metrics").perform(context))
     use_hazards = _as_bool(LaunchConfiguration("hazards").perform(context))
+    use_nav = _as_bool(LaunchConfiguration("nav").perform(context))
+    nav_planner = LaunchConfiguration("planner").perform(context)
+    nav_controller = LaunchConfiguration("controller").perform(context)
 
     bringup_share = get_package_share_directory("mars_yard_bringup")
     description_share = get_package_share_directory("mars_yard_description")
@@ -157,6 +161,20 @@ def _launch_setup(context, *args, **kwargs):
             )
         )
 
+    if use_nav:
+        nav_launch_path = os.path.join(nav_share, "launch", "nav.launch.py")
+        nodes.append(
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(nav_launch_path),
+                launch_arguments={
+                    "world": world,
+                    "planner": nav_planner,
+                    "controller": nav_controller,
+                    "use_sim_time": "true",
+                }.items(),
+            )
+        )
+
     if use_rviz:
         nodes.append(
             Node(
@@ -205,21 +223,25 @@ def generate_launch_description():
                 default_value="true",
                 description="Launch mars_yard_nav hazard_mapper for 3D step-height hazard detection.",
             ),
-            # Placeholders reserved for later navigation and domain-randomization phases
+            DeclareLaunchArgument(
+                "nav",
+                default_value="false",
+                description="Launch the Nav2 stack (map_server, planner, controller, BT navigator).",
+            ),
             DeclareLaunchArgument(
                 "planner",
-                default_value="",
-                description="Placeholder (unused in Phase 3): Nav2 global planner selection.",
+                default_value="smac_hybrid",
+                description="Nav2 global planner overlay: 'navfn' or 'smac_hybrid'.",
             ),
             DeclareLaunchArgument(
                 "controller",
-                default_value="",
-                description="Placeholder (unused in Phase 3): Nav2 local controller selection.",
+                default_value="dwb",
+                description="Nav2 local controller overlay: 'dwb', 'mppi', or 'rpp'.",
             ),
             DeclareLaunchArgument(
                 "randomization",
                 default_value="",
-                description="Placeholder (unused in Phase 3): terrain/physics randomization profile.",
+                description="Placeholder (unused in Phase 5b): terrain/physics randomization profile.",
             ),
             OpaqueFunction(function=_launch_setup),
         ]

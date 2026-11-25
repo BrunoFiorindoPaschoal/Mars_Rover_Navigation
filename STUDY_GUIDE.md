@@ -34,7 +34,7 @@ tf tree: `map -> odom -> base_link -> {lidar_link, imu_link, wheel_*}`
 | 1 | ros2_control + mujoco_ros2_control | The integration the project exists for | **done**, see Part 1 |
 | 2 | tf2 tree + EKF | Every node depends on correct frames | **done**, see Part 2 |
 | 3a | 3D lidar + step-height hazard detection | Local rock/boulder perception on slopes | **done**, see Part 3a |
-| 3b | Nav2 config: costmaps, planners, controllers | The DLR role | planned (Phase 5b) |
+| 3b | Nav2 config: costmaps, planners, controllers | The DLR role | **done**, see Part 3b |
 | 4 | Rover MJCF/URDF + contact physics | Explains slip and jitter, and every number in the model | **done**, see Part 4 |
 | 5 | Terrain pipeline (DEM -> hfield + slope map) | Planning on orbital data | **done**, see Part 5 |
 | 6 | C++ metrics node | rclcpp, CMake, gtest, metric definitions | **done**, see Part 6 |
@@ -148,6 +148,47 @@ Sections for each part are filled in as the code lands.
 - Run `./tools/check_hazards.sh flat` and `./tools/check_hazards.sh mars`, then launch `ros2 launch mars_yard_bringup sim.launch.py world:=mars` and drive around `boulder_0` while watching `/points` and `/hazard_grid` in RViz2.
 - In `src/mars_yard_nav/config/hazard_mapper.yaml`, lower `step_threshold` to `0.05` and rerun `./tools/check_hazards.sh mars`: watch `rock_13` (`0.059 m` exposed) and small terrain undulations start triggering hazards.
 - In `tools/tests/test_hazard_core.py`, replace `(x_max, y_max)` plane evaluation in `hazard_core.py` with cell centres on a `25°` slope and observe the discretization bias appear.
+
+---
+
+## Part 3b · Nav2 stack: lifecycle nodes, BT navigator, costmap layers, planners vs controllers  *(Phase 5b, done)*
+
+**Where it sits:** the top of the autonomy stack. Nav2 takes the orbital slope map (`/map`), the Phase 5a 3D lidar hazards (`/hazards`), and the EKF pose (`odom → base_link`, `/odometry/filtered`), plans a global path (`/plan`), tracks it with a local controller, smooths body velocities (`/cmd_vel`), and recovers if planning or progress stalls.
+
+**The navigation loop (one goal from `/goal_pose` or `BasicNavigator.goToPose`):**
+1. `map_server` publishes the static orbital slope map (`slope.yaml` on `mars`, `flat.yaml` on `flat`) as a Transient Local `OccupancyGrid` on `/map` in frame `map`.
+2. `global_costmap` (50 × 50 m in `map`) and `local_costmap` (rolling 8 × 8 m in `odom`) layer `StaticLayer` (`trinary_costmap: false`, preserving 10°–20° slope costs) + `ObstacleLayer` (`/hazards`, `sensor_frame: base_link`, marking `z ∈ [0.1, 0.5]` and clearing `z = 0.0`) + `InflationLayer` (`inflation_radius: 1.0 m`).
+3. `bt_navigator` ticks its Behavior Tree (`navigate_to_pose_w_replanning_and_recovery.xml`): at 1 Hz it asks `planner_server` (`NavfnPlanner` or `SmacPlannerHybrid`) for a `/plan`, and continuously streams that path to `controller_server` (`DWBLocalPlanner`, `MPPIController`, or `RegulatedPurePursuitController`) at 10 Hz.
+4. `controller_server` (and `behavior_server` during recoveries) publishes unstamped `Twist` on `cmd_vel_nav` → `velocity_smoother` enforces acceleration limits and publishes `/cmd_vel` → `twist_stamper.py` → `diff_drive_controller`.
+5. `lifecycle_manager_navigation` brings all 6 Nav2 servers through `unconfigured → inactive → active` and monitors them with bond heartbeats.
+
+**Read, in this order:**
+1. `src/mars_yard_nav/config/nav2_base.yaml`: shared server config, costmap layers, footprint (`0.84 × 0.76 m`), `odom_topic: /odometry/filtered`, and `velocity_smoother`.
+2. `src/mars_yard_nav/config/planner_navfn.yaml` and `planner_smac_hybrid.yaml`: 2D Dijkstra/potential-field vs kinodynamic Dubin Hybrid-A* (`minimum_turning_radius: 0.35`, `cost_penalty: 5.0`).
+3. `src/mars_yard_nav/config/controller_dwb.yaml`, `controller_mppi.yaml`, and `controller_rpp.yaml`: the three local-control paradigms (discrete trajectory rollout + critics, stochastic model-predictive path integral, and curvature-regulated pure pursuit).
+4. `src/mars_yard_nav/launch/nav.launch.py` and `src/mars_yard_bringup/launch/sim.launch.py`: deep-merging base + planner + controller overlays in an `OpaqueFunction`, `cmd_vel` remapping through `velocity_smoother`, and `nav:=true` integration.
+5. `tools/check_nav.sh` and `tools/check_nav_runner.py`: headless `nav2_simple_commander` (`BasicNavigator`) verification, obstacle clearance calculation against `obstacles.json`, and metrics collection.
+
+**Concepts to know:**
+- **Lifecycle nodes (`rclcpp_lifecycle`):** Nav2 servers are managed state machines (`unconfigured → inactive → active → finalized`). Subscriptions, publishers, and action servers only activate after `configure` + `activate` are called by `nav2_lifecycle_manager`, guaranteeing deterministic bringup order (e.g., `map_server` before costmaps) and clean shutdown.
+- **Behavior Tree (`bt_navigator`):** replaces rigid finite-state machines with a composable tree of action/condition/decorator/control nodes (`PipelineSequence`, `RateController`, `RecoveryNode`, `RoundRobin`). Replanning at 1 Hz lets the global path adapt as `hazard_mapper` discovers boulders ahead; recovery subtrees clear costmaps, spin, wait, or back up when progress stalls.
+- **Costmap 2D layers & inflation:** costmaps stack independent `Layer` plugins into one 0–254 master grid (`0` free, `1–252` inflated/scaled, `253` inscribed, `254` lethal, `255` unknown). Setting `trinary_costmap: false` on `StaticLayer` keeps our `mode: scale` orbital slope gradient intact; setting `sensor_frame: base_link` on `ObstacleLayer` ensures free-space raytracing originates at the rover rather than at the `odom` frame origin `(0, 0)`.
+- **Global planners vs local controllers (and skid-steer physics on slopes):**
+  - *Global planners* search the full static+obstacle map (`NavFn`: fast 2D grid Dijkstra ignoring heading; `SmacPlannerHybrid`: 3D `(x, y, θ)` Hybrid-A* respecting a minimum turning radius).
+  - *Local controllers* track the global path inside the rolling local costmap (`DWB`: samples `(vx, wz)` arcs and scores critics including `ObstacleFootprint` and `RotateToGoal`; `MPPI`: optimizes noisy control trajectories via weighted softmax; `RPP`: steers toward a velocity-scaled lookahead carrot and slows for curvature/obstacles).
+  - *Coupling matters on Mars:* skid-steer turns scrub sideways downhill (`DEVLOG` Phase 5b tuning log). High `wz_max` (`0.65`) caused MPPI to overshoot and pirouette 6 times; lowering `wz_max: 0.35` cut drift by 56% and energy by 63%. Forward-only Dubin `SmacPlannerHybrid` paired with carrot-following `RPP` can enter an endless orbit if slip causes a slight first-pass miss, whereas `SmacPlannerHybrid + DWB` converges cleanly (`28.2 s`, `0.22 m` GT error, `449 J`).
+- **Docs:** [Nav2 Concepts](https://docs.nav2.org/concepts/index.html), [Nav2 Lifecycle Manager](https://docs.nav2.org/configuration/packages/configuring-lifecycle-manager.html), [Behavior Trees & BT Navigator](https://docs.nav2.org/configuration/packages/configuring-bt-navigator.html), [Costmap 2D & Plugins](https://docs.nav2.org/configuration/packages/configuring-costmaps.html), [NavFn](https://docs.nav2.org/configuration/packages/configuring-navfn.html), [Smac Hybrid-A*](https://docs.nav2.org/configuration/packages/smac/configuring-smac-hybrid.html), [DWB](https://docs.nav2.org/configuration/packages/configuring-dwb-controller.html), [MPPI](https://docs.nav2.org/configuration/packages/configuring-mppic.html), [Regulated Pure Pursuit](https://docs.nav2.org/configuration/packages/configuring-regulated-pp.html), [Simple Commander API](https://docs.nav2.org/commander_api/index.html)
+
+**Self-check questions:**
+1. Why does `mars_yard_nav` set `trinary_costmap: false` on `StaticLayer`, and what would change on `mars` slopes between 10° and 20° if it were left at its default `true`?
+2. `/hazards` is published in frame `odom`. What goes wrong in `ObstacleLayer` raytrace clearing if `sensor_frame` is left empty instead of `base_link`?
+3. Why did `nav2_base.yaml` include `static_layer` in `local_costmap` as well as `global_costmap`?
+4. Why can `SmacPlannerHybrid` (Dubin) + `RPP` orbit a goal endlessly without triggering Nav2's `SimpleProgressChecker`, whereas `NavFn` + `RPP` and `SmacPlannerHybrid` + `DWB` do not?
+
+**Experiments:**
+- Launch the full interactive demo (`ros2 launch mars_yard_bringup sim.launch.py world:=mars nav:=true`) and click a **2D Goal Pose** behind `boulder_0` and `boulder_6` in RViz2; watch `/global_costmap/costmap`, `/local_costmap/costmap`, `/plan`, and `/local_plan` update live.
+- Compare `./tools/check_nav.sh mars smac_hybrid dwb` against `./tools/check_nav.sh mars navfn dwb` and `./tools/check_nav.sh mars smac_hybrid mppi`: inspect boulder clearance, `ekf_pos_drift`, `lateral_slide`, and `energy`.
+- Temporarily set `wz_max: 0.65` on a `/tmp` copy of `controller_mppi.yaml` and observe the MPPI pirouette trap and downhill EKF drift described in the Phase 5b DEVLOG tuning log.
 
 ## Part 4 · Rover model: MJCF physics + URDF frames  *(Phase 1, done)*
 

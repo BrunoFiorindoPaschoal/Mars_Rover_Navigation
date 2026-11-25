@@ -20,6 +20,22 @@ Launch the ROS 2 + MuJoCo simulation (`world:=flat` or `world:=mars`):
 ros2 launch mars_yard_bringup sim.launch.py world:=mars
 ```
 
+## Navigate
+
+Launch MuJoCo, EKF, 3D lidar hazard mapping, Nav2, and RViz2 in one command (default planner/controller: `smac_hybrid` + `dwb`):
+
+```bash
+ros2 launch mars_yard_bringup sim.launch.py world:=mars nav:=true
+```
+
+In RViz2, select the **2D Goal Pose** tool in the top toolbar, then click and drag anywhere on the map (in frame `map`) to send a goal to `/goal_pose`. Optional overlays: `planner:=navfn|smac_hybrid` and `controller:=dwb|mppi|rpp`.
+
+Headless verification:
+
+```bash
+./tools/check_nav.sh mars smac_hybrid dwb
+```
+
 ## Docs
 - [DEVLOG.md](DEVLOG.md): design decisions, with the reasons for each
 - [STUDY_GUIDE.md](STUDY_GUIDE.md): the core parts of the code and how to study them

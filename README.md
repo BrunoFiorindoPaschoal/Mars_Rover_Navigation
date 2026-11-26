@@ -1,8 +1,15 @@
 # Mars Yard in MuJoCo
 
+[![ci](https://github.com/BrunoFiorindoPaschoal/Mars_Rover_Navigation/actions/workflows/ci.yml/badge.svg)](https://github.com/BrunoFiorindoPaschoal/Mars_Rover_Navigation/actions/workflows/ci.yml)
+
 A skid-steer rover on HiRISE Jezero crater terrain, simulated in MuJoCo and driven autonomously by ROS 2 Jazzy Nav2 through `mujoco_ros2_control`.
 
-> Work in progress. This README claims only what the repo currently shows.
+**What is in it**
+- **Simulation:** a MuJoCo world generated from a real HiRISE DTM (50 × 50 m of Jezero crater at 0.1 m/px, as heightfield tiles), with boulders and sand patches; the rover is a skid-steer MJCF/URDF pair with a pivoting front axle.
+- **C++ MuJoCo plugins:** `RayScanPlugin` (2D/3D ray-cast lidar, one plugin instead of 360 rangefinders) and `TeleportPlugin` (in-sim rover reset over a ROS service, 1.4 s vs 16.7 s per relaunch).
+- **ROS 2 stack:** `ros2_control` diff-drive, a `robot_localization` EKF (wheel odometry + gyro), a 3D-lidar step-height hazard mapper feeding Nav2 costmaps, and switchable planners (NavFn, Smac Hybrid-A*) and controllers (DWB, MPPI, RPP).
+- **Evaluation:** a C++ metrics node scored against MuJoCo ground truth, a 20-scenario benchmark (flat / slope / rocks / sand), and domain randomization levels 0–3 (friction, mass, centre of mass, motor gain, sensor noise, latency).
+- **Engineering:** a Docker image, plus GitHub Actions CI that runs the gtest and pytest suites inside it; [DEVLOG.md](DEVLOG.md) records every design decision with the alternatives that were rejected.
 
 <table>
 <tr>
@@ -74,16 +81,20 @@ python3 -m mars_yard_benchmark.analysis \
   --plots-dir results/benchmark/plots
 ```
 
-### Results (full 600-run matrix — pending overnight run)
+### Pilot results (30 runs, 1 seed)
 
-| Planner × Controller | Flat | Slope | Rocks | Sand | Overall | Time (s) | Path ratio | Tracking err (m) | Energy (J) |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `navfn + dwb` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `navfn + mppi` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `navfn + rpp` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `smac_hybrid + dwb` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `smac_hybrid + mppi` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| `smac_hybrid + rpp` | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+The default combo ran all 20 scenarios; the other five ran `slope_04` and `rocks_01` only. Full tables: [`results/benchmark/summary.md`](results/benchmark/summary.md). The 600-run matrix above has not been run yet.
+
+| Planner + Controller | Success | Time (s) | Path ratio | Tracking err (m) | Energy (J) |
+|---|---:|---:|---:|---:|---:|
+| `smac_hybrid + dwb` | **20/20** | 26.6 ± 4.4 | 0.979 | 0.105 | 426 |
+| `navfn + dwb` | 2/2 | 32.6 ± 6.2 | 0.991 | 0.117 | 350 |
+| `navfn + rpp` | 2/2 | 32.0 ± 5.9 | 0.993 | 0.134 | 464 |
+| `smac_hybrid + rpp` | 2/2 | 32.8 ± 5.3 | 1.014 | 0.399 | 536 |
+| `navfn + mppi` | 1/2 | 32.4 | 1.000 | 0.300 | 507 |
+| `smac_hybrid + mppi` | 0/2 | — | — | — | — |
+
+All three MPPI failures are `goal_miss`es: Nav2 reported success, but the true rover ended 4.1–5.1 m (on the 14.5° cross-slope) or 1.45 m (in the rock field) from the goal.
 
 Success means Nav2 `SUCCEEDED` **and** the ground-truth rover ends within 1.0 m of the goal; otherwise the run is a `goal_miss` (the EKF thought it arrived).
 
@@ -130,9 +141,17 @@ python3 tools/bag_to_costmap.py results/figure/bags/smac_hybrid_dwb__rocks_01__s
 
 On an RTX 2060, Eevee at 1080p and 32 samples takes about 8.5 s per frame (about 2 h for the 28 s run). The Phase 2 open-loop MuJoCo render is still in `media/tier_a.gif` (`tools/render_tier_a.py`).
 
+## Known limitations
+
+- **No global localization:** `map → odom` is a static identity, and the EKF fuses only wheel odometry and gyro yaw rate. Downhill slip is invisible to it, which is the root cause of most `goal_miss` failures. A terrain-relative or visual odometry source would be the next step.
+- **Skid-steer kinematics:** `diff_drive_controller` uses an empirical wheel-separation multiplier (2.94) that does not hold at every yaw rate (on the slope, −0.52 rad/s commanded gave −1.05 rad/s; DEVLOG Phase 5b), and in-place turns slide downhill on steep slopes.
+- **Terrain resolution:** the DTM's true resolution is about 1 m. Detail below that is bicubic interpolation; small-scale roughness comes only from the rock geoms.
+- **Randomization confound:** each randomization level uses one physics sample, so level and sample effects are not yet separated.
+- **CI scope:** CI runs the unit tests only; the closed-loop simulation checks (`tools/check_*.sh`) run locally.
+
 ## Docs
 - [DEVLOG.md](DEVLOG.md): design decisions, with the reasons for each
 - [STUDY_GUIDE.md](STUDY_GUIDE.md): the core parts of the code and how to study them
 
-## Credits
-HiRISE terrain data: NASA/JPL-Caltech/UArizona.
+## License
+Code: [MIT](LICENSE). HiRISE terrain data: NASA/JPL-Caltech/UArizona.
